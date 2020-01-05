@@ -9,5 +9,5 @@ conda create --name mll
 activate mll
 pip install ipykernel
 ipython kernel install --user --name=MLL
-conda install -c anaconda quandl tensorflow
+conda install -c anaconda quandl tensorflow=2.0
 ```
