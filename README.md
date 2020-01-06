@@ -12,6 +12,6 @@ conda create --name mll
 activate mll
 conda install -c anaconda quandl
 ```
- <div>
+ <Warning>
   *hello*
- </div>
+ </Warning>
