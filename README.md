@@ -5,9 +5,13 @@
 Create virtual environment:
 
 ```
-conda create --name mll
-activate mll
+conda install -c anaconda tensorflow=2.0
 pip install ipykernel
 ipython kernel install --user --name=mll
-conda install -c anaconda quandl tensorflow=2.0
+conda create --name mll
+activate mll
+conda install -c anaconda quandl
 ```
+ <div>
+  *hello*
+ </div>
