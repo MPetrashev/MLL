@@ -12,6 +12,4 @@ conda create --name mll
 activate mll
 conda install -c anaconda quandl
 ```
- <Warning>
-  *hello*
- </Warning>
+In this code we do install `tensorflow` not in the `mll` virtual environemnt to fix a problem with PyCharm which otherwise can't run tests.
