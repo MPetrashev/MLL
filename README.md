@@ -5,11 +5,7 @@
 Create virtual environment:
 
 ```
-conda install -c anaconda tensorflow=2.0
-pip install ipykernel
+conda create --name mll python ipykernel tensorflow=2.0 quandl
 ipython kernel install --user --name=mll
-conda create --name mll
-activate mll
-conda install -c anaconda quandl
 ```
-In this code we do install `tensorflow` not in the `mll` virtual environemnt to fix a problem with PyCharm which otherwise can't run tests.
+To run tests in PyCharm, please, run `conda install -c anaconda tensorflow=2.0` outside of `mll` virtual environment.

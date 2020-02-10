@@ -4,7 +4,7 @@ from mll.Tutorial import Tutorial
 
 
 class Tutorial_test(unittest.TestCase):
-
+    # unit test prediction LTSM
     def test_prediction(self):
         t = Tutorial()
         prediction = t.predict()
