@@ -3,8 +3,8 @@ import unittest
 from mll.Tutorial import Tutorial
 
 
-class Tutorial_test(unittest.TestCase):
-    # unit test prediction LTSM
+class TutorialTest(unittest.TestCase):
+    # unit test prediction LSTM
     def test_prediction(self):
         t = Tutorial()
         prediction = t.predict()
