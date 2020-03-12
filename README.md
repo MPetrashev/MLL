@@ -11,7 +11,7 @@ ipython kernel install --user --name=mll
 ```
 
 ```
-conda create --name mll python ipykernel tensorflow=2.0 quandl
+conda create --name mll python ipykernel tensorflow quandl matplotlib
 ipython kernel install --user --name=mll
 ```
 To run tests in PyCharm, please, run `conda install -c anaconda tensorflow=2.0` outside of `mll` virtual environment.

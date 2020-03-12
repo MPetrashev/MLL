@@ -7,8 +7,20 @@ import numpy as np
 import pandas as pd
 import os
 
+# todo: https://www.tensorflow.org/tutorials/structured_data/time_series
+#  You could also use a tf.keras.utils.normalize method that rescales the values into a range of [0,1].
+
 
 def univariate_data(dataset, start_index, end_index, history_size, target_size):
+    """
+    !The mean and standard deviation should only be computed using the training data.!
+    :param dataset:
+    :param start_index:
+    :param end_index:
+    :param history_size:
+    :param target_size:
+    :return:
+    """
     data = []
     labels = []
 

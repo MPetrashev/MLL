@@ -4,11 +4,11 @@ import logging
 
 import pandas as pd
 import quandl
-logger = logging.getLogger('mll.quandl')
 quandl.ApiConfig.api_key = "-GhfHUAdug3HZ6zuAhzx"
+logger = logging.getLogger('mll.quandl')
 
 
-def get_data(datasets: Dict[str,str], data_column: str, max_n: int = 5) -> Dict[str,pd.DataFrame]:
+def get_data(datasets: Dict[str,str], data_column: str, max_n: int = 5, **kwargs) -> Dict[str,pd.DataFrame]:
     """
     :param datasets: Dict of datasets where keys are quandl dataset id and values are name of column on which map data_column.
     :param data_column:
@@ -17,10 +17,10 @@ def get_data(datasets: Dict[str,str], data_column: str, max_n: int = 5) -> Dict[
     """
     def job(dataset: str, column_name: str) -> pd.DataFrame:
         logger.info('Loading %s dataset...', dataset)
-        df = quandl.get(dataset)
+        df = quandl.get(dataset, **kwargs)
         return df.rename(columns={data_column: column_name})[[column_name]]
 
-    with ThreadPoolExecutor(max_workers=max(len(datasets), max_n)) as e:
+    with ThreadPoolExecutor(max_workers=min(len(datasets), max_n)) as e:
         futures = {dataset : e.submit(job, dataset, column_name) for dataset, column_name in datasets.items()}
     result = {k: f.result() for k, f in futures.items()}
     df = None
