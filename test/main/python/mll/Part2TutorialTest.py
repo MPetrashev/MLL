@@ -269,9 +269,6 @@ class Part2TutorialTest(unittest.TestCase):
         csv_path, _ = os.path.splitext(zip_path)
         df = pd.read_csv(csv_path)
 
-        def create_time_steps(length):
-            return list(range(-length, 0))
-
         features_considered = ['p (mbar)', 'T (degC)', 'rho (g/m**3)']
         features = df[features_considered]
         features.index = df['Date Time']
@@ -301,24 +298,11 @@ class Part2TutorialTest(unittest.TestCase):
             return np.array(data), np.array(labels)
 
         past_history = 720
-        future_target = 72
         STEP = 6
 
-        x_train_single, y_train_single = multivariate_data(dataset, dataset[:, 1], 0,
-                                                           TRAIN_SPLIT, past_history,
-                                                           future_target, STEP,
-                                                           single_step=True)
-        x_val_single, y_val_single = multivariate_data(dataset, dataset[:, 1],
-                                                       TRAIN_SPLIT, None, past_history,
-                                                       future_target, STEP,
-                                                       single_step=True)
         future_target = 72
-        x_train_multi, y_train_multi = multivariate_data(dataset, dataset[:, 1], 0,
-                                                         TRAIN_SPLIT, past_history,
-                                                         future_target, STEP)
-        x_val_multi, y_val_multi = multivariate_data(dataset, dataset[:, 1],
-                                                     TRAIN_SPLIT, None, past_history,
-                                                     future_target, STEP)
+        x_train_multi, y_train_multi = multivariate_data(dataset, dataset[:, 1], 0, TRAIN_SPLIT, past_history, future_target, STEP)
+        x_val_multi, y_val_multi = multivariate_data(dataset, dataset[:, 1], TRAIN_SPLIT, None, past_history, future_target, STEP)
         train_data_multi = tf.data.Dataset.from_tensor_slices((x_train_multi, y_train_multi))
         train_data_multi = train_data_multi.cache().shuffle(BUFFER_SIZE).batch(BATCH_SIZE).repeat()
 
@@ -326,16 +310,13 @@ class Part2TutorialTest(unittest.TestCase):
         val_data_multi = val_data_multi.batch(BATCH_SIZE).repeat()
 
         for x, y in train_data_multi.take(1):
-            # np.testing.assert_allclose(y[0].numpy(), [-0.9648635, -0.90118192, -0.88497207, -0.86065728, -0.85834159, -0.86181513, -0.8537102, -0.82939542, -0.85023666, -0.90118192, -0.93707518, -0.94170657, -0.94981149, -0.96949489, -1.00075676, -1.02275585, -1.03896571, -1.05285987, -1.05980695, -1.06906972, -1.08412173, -1.08643743, -1.07485896, -1.06559618, -1.05054417, -1.05054417, -1.06559618, -1.07949035, -1.07717465, -1.06328049, -1.05170202, -1.04938633, -1.06212264, -1.06559618, -1.06443834, -1.06559618, -1.05517556,-1.05054417, -1.05054417, -1.04938633, -1.04938633, -1.05401772, -1.06675403, -1.07370111, -1.07370111, -1.07138542, -1.07485896, -1.09338451, -1.09106882, -1.07949035, -1.07022757, -1.06559618, -1.07138542, -1.08412173, -1.09222666, -1.10033159, -1.10148944, -1.09685805, -1.09685805, -1.10380513, -1.10264729, -1.10380513, -1.11191006, -1.1153836, -1.12811992, -1.16864456, -1.19527504, -1.19759073, -1.20106427, -1.20453781, -1.20453781, -1.20453781])
             np.testing.assert_allclose(y[0].numpy(),[-0.3928871311805136, -0.40678129406519214, -0.42183330385692724, -0.4357274667416058, -0.4519373234403974, -0.46004225178979324, -0.48204134302386753, -0.5028825873508854, -0.5225659847708467, -0.5237238316779033, -0.5202502909567336, -0.52140813786379, -0.529513066213186, -0.5248816785849597, -0.5248816785849597, -0.5306709131202425, -0.5318287600272991, -0.5341444538414121, -0.5630906265178257, -0.6105623497071442, -0.6175094311494833, -0.6244565125918227, -0.6348771347553316, -0.644139910011784, -0.6510869914541233, -0.6534026852682363, -0.6406663692906143, -0.605930962078918, -0.5908789522871829, -0.6047731151718614, -0.6325614409412186, -0.6151937373353703, -0.595510339915409, -0.5966681868224656, -0.6128780435212573, -0.6001417275436353, -0.6128780435212573, -0.6221408187777097, -0.6221408187777097, -0.6198251249635965, -0.5769847894025043, -0.5491964636331472, -0.5654063203319389, -0.5654063203319389, -0.559617085796656, -0.5341444538414121, -0.5480386167260907, -0.567722014146052, -0.5746690955883913, -0.5793004832166173, -0.5723534017742781, -0.5619327796107693, -0.5457229229119777, -0.5457229229119777, -0.5688798610531085, -0.5758269424954477, -0.580458330123674, -0.5816161770307305, -0.5793004832166173, -0.5862475646589567, -0.5862475646589567, -0.5908789522871829, -0.6105623497071442, -0.6406663692906143, -0.6557183790823493, -0.6638233074317452, -0.6649811543388018, -0.6811910110375934, -0.7020322553646112, -0.7205578058775159, -0.7332941218551379, -0.7564510599962688])
 
         multi_step_model = tf.keras.models.Sequential()
-        multi_step_model.add(tf.keras.layers.LSTM(32,
-                                                  return_sequences=True,
-                                                  input_shape=x_train_multi.shape[-2:]))
+        multi_step_model.add(tf.keras.layers.LSTM(32, return_sequences=True, input_shape=x_train_multi.shape[-2:]))
         multi_step_model.add(tf.keras.layers.LSTM(16))
         # multi_step_model.add(tf.keras.layers.LSTM(16, activation='relu'))
-        multi_step_model.add(tf.keras.layers.Dense(72))
+        multi_step_model.add(tf.keras.layers.Dense(future_target))
 
         multi_step_model.compile(optimizer=tf.keras.optimizers.RMSprop(clipvalue=1.0), loss='mae')
         multi_step_history = multi_step_model.fit(train_data_multi, epochs=EPOCHS,
