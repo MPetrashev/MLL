@@ -8,6 +8,8 @@ import numpy as np
 import os
 import pandas as pd
 
+from mll.LSTMPredictor import LSTMPredictor
+
 mpl.rcParams['figure.figsize'] = (8, 6)
 mpl.rcParams['axes.grid'] = False
 
@@ -261,68 +263,28 @@ class Part2TutorialTest(unittest.TestCase):
         BUFFER_SIZE = 10000
         EVALUATION_INTERVAL = 200
         EPOCHS = 10
+        past_history = 720
+        STEP = 6
+        future_target = 72
         tf.random.set_seed(13)
         zip_path = tf.keras.utils.get_file(
             origin='https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip',
             fname='jena_climate_2009_2016.csv.zip',
             extract=True)
         csv_path, _ = os.path.splitext(zip_path)
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path).set_index('Date Time')
 
-        features_considered = ['p (mbar)', 'T (degC)', 'rho (g/m**3)']
-        features = df[features_considered]
-        features.index = df['Date Time']
-        dataset = features.values
-        data_mean = dataset[:TRAIN_SPLIT].mean(axis=0)
-        data_std = dataset[:TRAIN_SPLIT].std(axis=0)
-        dataset = (dataset - data_mean) / data_std
+        predictor = LSTMPredictor(df[['p (mbar)', 'T (degC)', 'rho (g/m**3)']], 'T (degC)', TRAIN_SPLIT, past_history
+                                  , future_target, STEP, BATCH_SIZE, BUFFER_SIZE, EVALUATION_INTERVAL, EPOCHS)
 
-        def multivariate_data(dataset, target, start_index, end_index, history_size,
-                              target_size, step, single_step=False):
-            data = []
-            labels = []
-
-            start_index = start_index + history_size
-            if end_index is None:
-                end_index = len(dataset) - target_size
-
-            for i in range(start_index, end_index):
-                indices = range(i - history_size, i, step)
-                data.append(dataset[indices])
-
-                if single_step:
-                    labels.append(target[i + target_size])
-                else:
-                    labels.append(target[i:i + target_size])
-
-            return np.array(data), np.array(labels)
-
-        past_history = 720
-        STEP = 6
-
-        future_target = 72
-        x_train_multi, y_train_multi = multivariate_data(dataset, dataset[:, 1], 0, TRAIN_SPLIT, past_history, future_target, STEP)
-        x_val_multi, y_val_multi = multivariate_data(dataset, dataset[:, 1], TRAIN_SPLIT, None, past_history, future_target, STEP)
-        train_data_multi = tf.data.Dataset.from_tensor_slices((x_train_multi, y_train_multi))
-        train_data_multi = train_data_multi.cache().shuffle(BUFFER_SIZE).batch(BATCH_SIZE).repeat()
-
-        val_data_multi = tf.data.Dataset.from_tensor_slices((x_val_multi, y_val_multi))
-        val_data_multi = val_data_multi.batch(BATCH_SIZE).repeat()
+        val_data_multi = predictor.validation_dataset
+        train_data_multi = predictor.train_data_multi
 
         for x, y in train_data_multi.take(1):
             np.testing.assert_allclose(y[0].numpy(),[-0.3928871311805136, -0.40678129406519214, -0.42183330385692724, -0.4357274667416058, -0.4519373234403974, -0.46004225178979324, -0.48204134302386753, -0.5028825873508854, -0.5225659847708467, -0.5237238316779033, -0.5202502909567336, -0.52140813786379, -0.529513066213186, -0.5248816785849597, -0.5248816785849597, -0.5306709131202425, -0.5318287600272991, -0.5341444538414121, -0.5630906265178257, -0.6105623497071442, -0.6175094311494833, -0.6244565125918227, -0.6348771347553316, -0.644139910011784, -0.6510869914541233, -0.6534026852682363, -0.6406663692906143, -0.605930962078918, -0.5908789522871829, -0.6047731151718614, -0.6325614409412186, -0.6151937373353703, -0.595510339915409, -0.5966681868224656, -0.6128780435212573, -0.6001417275436353, -0.6128780435212573, -0.6221408187777097, -0.6221408187777097, -0.6198251249635965, -0.5769847894025043, -0.5491964636331472, -0.5654063203319389, -0.5654063203319389, -0.559617085796656, -0.5341444538414121, -0.5480386167260907, -0.567722014146052, -0.5746690955883913, -0.5793004832166173, -0.5723534017742781, -0.5619327796107693, -0.5457229229119777, -0.5457229229119777, -0.5688798610531085, -0.5758269424954477, -0.580458330123674, -0.5816161770307305, -0.5793004832166173, -0.5862475646589567, -0.5862475646589567, -0.5908789522871829, -0.6105623497071442, -0.6406663692906143, -0.6557183790823493, -0.6638233074317452, -0.6649811543388018, -0.6811910110375934, -0.7020322553646112, -0.7205578058775159, -0.7332941218551379, -0.7564510599962688])
 
-        multi_step_model = tf.keras.models.Sequential()
-        multi_step_model.add(tf.keras.layers.LSTM(32, return_sequences=True, input_shape=x_train_multi.shape[-2:]))
-        multi_step_model.add(tf.keras.layers.LSTM(16))
-        # multi_step_model.add(tf.keras.layers.LSTM(16, activation='relu'))
-        multi_step_model.add(tf.keras.layers.Dense(future_target))
-
-        multi_step_model.compile(optimizer=tf.keras.optimizers.RMSprop(clipvalue=1.0), loss='mae')
-        multi_step_history = multi_step_model.fit(train_data_multi, epochs=EPOCHS,
-                                                  steps_per_epoch=EVALUATION_INTERVAL,
-                                                  validation_data=val_data_multi,
-                                                  validation_steps=50)
+        multi_step_model = predictor.multi_step_model
+        multi_step_history = predictor.multi_step_history
 
         np.testing.assert_allclose(multi_step_history.history['loss']
                 , [0.44376814126968384, 0.2823571302741766, 0.2520401889830828, 0.22650205560028552, 0.19273263037204744, 0.2003172218144595, 0.19582362338900566, 0.19108724601566793, 0.19595367684960366, 0.1866853316873312]
