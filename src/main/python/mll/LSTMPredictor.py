@@ -47,14 +47,16 @@ class LSTMPredictor:
         return (dataset - train_ds.mean(axis=0)) / train_ds.std(axis=0)
 
     @lazy_property
-    def validation_dataset(self):
+    def train_data_multi(self):
         self.x_train_multi, y_train_multi = multivariate_data(self.dataset, self.dataset[:, self.feature_to_predict], 0
                             , self.train_split, self.past_history, self.future_target, self.step)
+        train_data_multi = tf.data.Dataset.from_tensor_slices((self.x_train_multi, y_train_multi))
+        return train_data_multi.cache().shuffle(self.buffer_size).batch(self.batch_size).repeat()
+
+    @lazy_property
+    def validation_dataset(self):
         x_val_multi, y_val_multi = multivariate_data(self.dataset, self.dataset[:, self.feature_to_predict]
                             , self.train_split, None, self.past_history, self.future_target, self.step)
-        train_data_multi = tf.data.Dataset.from_tensor_slices((self.x_train_multi, y_train_multi))
-        self.train_data_multi = train_data_multi.cache().shuffle(self.buffer_size).batch(self.batch_size).repeat()
-
         validation_dataset = tf.data.Dataset.from_tensor_slices((x_val_multi, y_val_multi))
         validation_dataset = validation_dataset.batch(self.batch_size).repeat()
         return validation_dataset
@@ -65,7 +67,6 @@ class LSTMPredictor:
         multi_step_model = tf.keras.models.Sequential()
         multi_step_model.add(tf.keras.layers.LSTM(32, return_sequences=True, input_shape=self.x_train_multi.shape[-2:]))
         multi_step_model.add(tf.keras.layers.LSTM(16))
-        # multi_step_model.add(tf.keras.layers.LSTM(16, activation='relu'))
         multi_step_model.add(tf.keras.layers.Dense(self.future_target))
 
         multi_step_model.compile(optimizer=tf.keras.optimizers.RMSprop(clipvalue=1.0), loss='mae')
