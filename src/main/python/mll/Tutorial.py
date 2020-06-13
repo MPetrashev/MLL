@@ -3,6 +3,9 @@ Example: https://www.tensorflow.org/tutorials/structured_data/time_series
 """
 from utils import lazy_property
 import tensorflow as tf
+# Code below fixes bug: https://github.com/tensorflow/tensorflow/issues/36508
+physical_devices = tf.config.list_physical_devices('GPU')
+tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 import numpy as np
 import pandas as pd
 import os
@@ -68,13 +71,6 @@ class Tutorial:
                                                univariate_future_target)
         EVALUATION_INTERVAL = 200
         EPOCHS = 10
-        simple_lstm_model = tf.keras.models.Sequential([
-            tf.keras.layers.LSTM(8, input_shape=x_train_uni.shape[-2:]),
-            tf.keras.layers.Dense(1)
-        ])
-
-        simple_lstm_model.compile(optimizer='adam', loss='mae')
-
         BATCH_SIZE = 256
         BUFFER_SIZE = 10000
 
@@ -83,6 +79,14 @@ class Tutorial:
 
         self.val_univariate = tf.data.Dataset.from_tensor_slices((x_val_uni, y_val_uni))
         self.val_univariate = self.val_univariate.batch(BATCH_SIZE).repeat()
+
+        tf.random.set_seed(13)
+        simple_lstm_model = tf.keras.models.Sequential([
+            tf.keras.layers.LSTM(8, input_shape=x_train_uni.shape[-2:]),
+            tf.keras.layers.Dense(1)
+        ])
+
+        simple_lstm_model.compile(optimizer='adam', loss='mae')
 
         simple_lstm_model.fit(train_univariate, epochs=EPOCHS, steps_per_epoch=EVALUATION_INTERVAL,
                               validation_data=self.val_univariate,

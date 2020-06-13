@@ -11,7 +11,7 @@ ipython kernel install --user --name=mll
 ```
 
 ```
-conda create --name mll_gpu python ipykernel tensorflow-gpu quandl matplotlib
+conda create --name mll_gpu python ipykernel tensorflow-gpu quandl matplotlib scikit-learn
 activate mll_gpu
 ipython kernel install --user --name=mll_gpu
 ```

@@ -5,7 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/src/main/python" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/test/main/python" isTestSource="false" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.7 (mll)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.7 (mll_gpu)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="R Skeletons" level="application" />
     <orderEntry type="library" name="R User Library" level="project" />
