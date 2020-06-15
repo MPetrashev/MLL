@@ -14,6 +14,8 @@ mpl.rcParams['figure.figsize'] = (8, 6)
 mpl.rcParams['axes.grid'] = False
 
 BATCH_SIZE = 256
+
+
 def univariate_data(dataset, start_index, end_index, history_size, target_size):
     data = []
     labels = []
@@ -277,8 +279,9 @@ class Part2TutorialTest(unittest.TestCase):
         multi_step_model.add(tf.keras.layers.LSTM(32,
                                                   return_sequences=True,
                                                   input_shape=x_train_multi.shape[-2:]))
-        multi_step_model.add(tf.keras.layers.LSTM(16)) #without activation='relu' to use CuDNNLSTM https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM
-        # multi_step_model.add(tf.keras.layers.LSTM(16, activation='relu'))
+        multi_step_model.add(tf.keras.layers.LSTM(16))
+        # ORIGINAL: multi_step_model.add(tf.keras.layers.LSTM(16, activation='relu')) doesn't use GPU impl: CuDNNLSTM
+        # For more information see: https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM
         multi_step_model.add(tf.keras.layers.Dense(72))
 
         multi_step_model.compile(optimizer=tf.keras.optimizers.RMSprop(clipvalue=1.0), loss='mae')
