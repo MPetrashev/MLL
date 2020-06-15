@@ -9,6 +9,7 @@ import os
 import pandas as pd
 
 from mll.LSTMPredictor import LSTMPredictor
+from utils import lazy_property
 
 mpl.rcParams['figure.figsize'] = (8, 6)
 mpl.rcParams['axes.grid'] = False
@@ -76,6 +77,92 @@ class Part2TutorialTest(unittest.TestCase):
         np.testing.assert_array_equal(get_array(BATCH_SIZE*step), [v[0] for v in x[0]])
         np.testing.assert_array_equal(get_array(BATCH_SIZE*step+BATCH_SIZE-1), [v[0] for v in x[BATCH_SIZE-1]])
 
+    @lazy_property
+    def df(self):
+        zip_path = tf.keras.utils.get_file(
+            origin='https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip',
+            fname='jena_climate_2009_2016.csv.zip',
+            extract=True)
+        csv_path, _ = os.path.splitext(zip_path)
+        return pd.read_csv(csv_path)
+
+    def test_whole_example_with_LSTMPredictor(self):
+        df = self.df
+        TRAIN_SPLIT = 300000
+        EVALUATION_INTERVAL = 200
+        EPOCHS = 10
+        STEP = 6
+
+        univariate_past_history = 20
+        univariate_future_target = 0
+
+        predictor = LSTMPredictor(df[['T (degC)']], 'T (degC)', TRAIN_SPLIT, univariate_past_history
+                                  , univariate_future_target, single_step=True, seed=13)
+
+        train_univariate = predictor.training_dataset
+
+        simple_lstm_model = tf.keras.models.Sequential([
+            tf.keras.layers.LSTM(8, input_shape=predictor.x_train_multi.shape[-2:]),
+            tf.keras.layers.Dense(1)
+        ])
+
+        simple_lstm_model.compile(optimizer='adam', loss='mae')
+
+        val_univariate = predictor.validation_dataset
+        simple_lstm_model.fit(train_univariate, epochs=EPOCHS,
+                              steps_per_epoch=EVALUATION_INTERVAL,
+                              validation_data=val_univariate, validation_steps=50)
+        np.testing.assert_allclose([simple_lstm_model.predict(x)[0][0] for x, _ in val_univariate.take(3)]
+                                   , [0.5900344, 0.64682704, 1.3358905])
+
+        ## Part 2: Forecast a multivariate time series
+        past_history = 720
+        future_target = 72
+
+        predictor = LSTMPredictor(df[['p (mbar)', 'T (degC)', 'rho (g/m**3)']], 'T (degC)', TRAIN_SPLIT, past_history
+                                  , future_target, single_step=True, step=STEP)
+        train_data_single = predictor.training_dataset
+        x_train_single = predictor.x_train_multi
+
+        single_step_model = tf.keras.models.Sequential()
+        single_step_model.add(tf.keras.layers.LSTM(32, input_shape=x_train_single.shape[-2:]))
+        single_step_model.add(tf.keras.layers.Dense(1))
+
+        val_data_single = predictor.validation_dataset
+        single_step_model.compile(optimizer=tf.keras.optimizers.RMSprop(), loss='mae')
+        single_step_history = single_step_model.fit(train_data_single, epochs=EPOCHS,
+                                                    steps_per_epoch=EVALUATION_INTERVAL,
+                                                    validation_data=val_data_single,
+                                                    validation_steps=50)
+        np.testing.assert_allclose(single_step_history.history['loss']
+                , [0.30896712981164454, 0.26240251809358595, 0.2616553147137165, 0.25689387537539005, 0.2264231711626053, 0.24175462897755848, 0.24145282685756683, 0.2408904529362917, 0.24501676440238954, 0.23879031479358673]
+                , atol=0.001)
+        np.testing.assert_allclose(single_step_history.history['val_loss']
+                , [0.2646432928740978, 0.2445167075097561, 0.24731518439948558, 0.24523079961538316, 0.23587791658937932, 0.26497877776622775, 0.2581120006740093, 0.23956751435995102, 0.24788874626159668, 0.25179353058338166]
+                , atol=0.0045)
+        np.testing.assert_allclose([single_step_model.predict(x)[0][0] for x, _ in val_data_single.take(3)]
+                                   , [1.4486389, 0.7135288, 0.1295506])
+        ## Multi-Step model
+        predictor = LSTMPredictor(df[['p (mbar)', 'T (degC)', 'rho (g/m**3)']], 'T (degC)', TRAIN_SPLIT, past_history
+                                  , future_target, step=STEP)
+
+        for x, y in predictor.training_dataset.take(1):
+            np.testing.assert_allclose(y[0].numpy(), [-0.9648635, -0.90118192, -0.88497207, -0.86065728, -0.85834159, -0.86181513, -0.8537102, -0.82939542, -0.85023666, -0.90118192, -0.93707518, -0.94170657, -0.94981149, -0.96949489, -1.00075676, -1.02275585, -1.03896571, -1.05285987, -1.05980695, -1.06906972, -1.08412173, -1.08643743, -1.07485896, -1.06559618, -1.05054417, -1.05054417, -1.06559618, -1.07949035, -1.07717465, -1.06328049, -1.05170202, -1.04938633, -1.06212264, -1.06559618, -1.06443834, -1.06559618, -1.05517556,-1.05054417, -1.05054417, -1.04938633, -1.04938633, -1.05401772, -1.06675403, -1.07370111, -1.07370111, -1.07138542, -1.07485896, -1.09338451, -1.09106882, -1.07949035, -1.07022757, -1.06559618, -1.07138542, -1.08412173, -1.09222666, -1.10033159, -1.10148944, -1.09685805, -1.09685805, -1.10380513, -1.10264729, -1.10380513, -1.11191006, -1.1153836, -1.12811992, -1.16864456, -1.19527504, -1.19759073, -1.20106427, -1.20453781, -1.20453781, -1.20453781])
+
+        multi_step_history = predictor.multi_step_history
+        np.testing.assert_allclose(multi_step_history.history['loss']
+                , [0.4450967706739902, 0.2809910763800144, 0.2509454064071178, 0.22688977420330048, 0.19398607790470124, 0.20107007094511245, 0.19687376536428927, 0.1952586491405964, 0.1979307834804058, 0.18740502052009106]
+                , atol=0.001)
+        np.testing.assert_allclose(multi_step_history.history['val_loss']
+                , [0.28981183111667635, 0.23509616151452065, 0.22503124944865704, 0.199942394644022, 0.19537991806864738, 0.2210526643693447, 0.20746466845273973, 0.22165924802422524, 0.19337186850607396, 0.18313108265399933]
+                , atol=0.0045)
+
+        expected = [[0.42008147,0.4074365,0.4190545,0.38092047,0.37764043,0.3532061,0.3635833,0.353794,0.3636174,0.36912882,0.34708217,0.3492923,0.3271138,0.34136534,0.3694318,0.337804,0.36689726,0.35643876,0.35860327,0.36421573,0.3855072,0.40817818,0.39922044,0.41137493,0.4444736,0.443277,0.46242836,0.47056186,0.47642902,0.49946585,0.5162472,0.5412186,0.5675696,0.5948358,0.60343724,0.611224,0.66957885,0.65411466,0.6697624,0.6971751,0.74489814,0.7621752,0.7942886,0.8095534,0.79381627,0.84694064,0.87268865,0.9075441,0.90722024,0.915903,0.95743406,0.9836918,0.9889545,1.0059024,1.0255847,1.0458528,1.0805799,1.0764143,1.1024889,1.1363546,1.1611388,1.1497985,1.1532031,1.181525,1.2072618,1.232615,1.1955132,1.2199786,1.2436962,1.2822646,1.2872165,1.2864743],
+                    [0.7812743,0.8194141,0.7613482,0.75587755,0.7333431,0.7407532,0.7246601,0.68898964,0.67698884,0.624457,0.6344327,0.6027515,0.6476809,0.58828735,0.5657572,0.57673526,0.57208455,0.5547002,0.5476473,0.5289162,0.53235847,0.5214933,0.4908832,0.49427837,0.45242396,0.46084976,0.46418008,0.42138994,0.43918836,0.42978412,0.41351685,0.43037,0.39922905,0.4408551,0.3923477,0.4042978,0.40676972,0.38691247,0.39387703,0.37547672,0.3900192,0.46217522,0.42298168,0.441446,0.41992244,0.43954876,0.46803075,0.43839237,0.44874194,0.46782932,0.45921138,0.46045873,0.49706095,0.52588063,0.49481007,0.5131276,0.54101694,0.5282164,0.5888023,0.59030914,0.5973701,0.60163265,0.6296886,0.6582335,0.65569896,0.6550842,0.7084278,0.70974785,0.7236915,0.73276305,0.76109904,0.74581313],
+                    [0.97796416,0.94317424,0.973258,0.93881714,0.9341861,0.9135064,0.92150766,0.8993654,0.9100298,0.8901999,0.8815167,0.87288153,0.84119916,0.84060353,0.85510087,0.82818663,0.7997056,0.79429907,0.76427853,0.74651986,0.74829835,0.7466254,0.71017355,0.7084104,0.7050966,0.68472457,0.655819,0.6620807,0.6470221,0.61601824,0.5927886,0.58686787,0.58980066,0.552134,0.5391422,0.53496736,0.5190323,0.5000161,0.4889864,0.4723783,0.4615299,0.4421502,0.42290407,0.39695793,0.3901872,0.389645,0.35229707,0.36673546,0.35595116,0.3203716,0.3019779,0.3134658,0.2953146,0.26904568,0.2680464,0.24839607,0.2376272,0.2402171,0.22638237,0.20988297,0.21445316,0.22646923,0.20198339,0.20088762,0.18600768,0.18041697,0.15956028,0.18527961,0.19319332,0.1862053,0.16438788,0.1657778]]
+        multi_step_model = predictor.multi_step_model
+        for i, e in enumerate(predictor.validation_dataset.take(3)):
+            np.testing.assert_allclose(multi_step_model.predict(e[0])[0], expected[i])
 
     def test_whole_example(self):
         # # When run everything
@@ -89,13 +176,7 @@ class Part2TutorialTest(unittest.TestCase):
         #             , [0.4961, 0.3468, 0.3278, 0.2430, 0.1988, 0.2062, 0.1973, 0.1958, 0.1965, 0.1884], atol=0.063)
         # np.testing.assert_allclose(multi_step_history.history['val_loss']
         #             , [0.2883, 0.2905, 0.2478, 0.2091, 0.2135, 0.2065, 0.2070, 0.1916, 0.1855, 0.1960], atol=0.031)
-        zip_path = tf.keras.utils.get_file(
-            origin='https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip',
-            fname='jena_climate_2009_2016.csv.zip',
-            extract=True)
-        csv_path, _ = os.path.splitext(zip_path)
-        df = pd.read_csv(csv_path)
-
+        df = self.df
         TRAIN_SPLIT = 300000
         tf.random.set_seed(13)
         uni_data = df['T (degC)']
@@ -302,8 +383,6 @@ class Part2TutorialTest(unittest.TestCase):
         for i, e in enumerate(val_data_multi.take(3)):
             np.testing.assert_allclose(multi_step_model.predict(e[0])[0], expected[i])
 
-        print('Done')
-
     def test_multi_step_model(self):
         TRAIN_SPLIT = 300000
         BATCH_SIZE = 256
@@ -313,15 +392,8 @@ class Part2TutorialTest(unittest.TestCase):
         STEP = 6
         past_history = 720
         future_target = 72
-        # tf.random.set_seed(13)
-        zip_path = tf.keras.utils.get_file(
-            origin='https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip',
-            fname='jena_climate_2009_2016.csv.zip',
-            extract=True)
-        csv_path, _ = os.path.splitext(zip_path)
-        df = pd.read_csv(csv_path).set_index('Date Time')
 
-        predictor = LSTMPredictor(df[['p (mbar)', 'T (degC)', 'rho (g/m**3)']], 'T (degC)', TRAIN_SPLIT, past_history
+        predictor = LSTMPredictor(self.df[['p (mbar)', 'T (degC)', 'rho (g/m**3)']], 'T (degC)', TRAIN_SPLIT, past_history
                                   , future_target, STEP, BATCH_SIZE, BUFFER_SIZE, EVALUATION_INTERVAL, EPOCHS, seed=13)
 
         for x, y in predictor.training_dataset.take(1):
