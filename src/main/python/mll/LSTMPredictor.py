@@ -13,7 +13,7 @@ from utils import lazy_property
 class LSTMPredictor:
     def __init__(self, time_series: pd.DataFrame, feature_to_predict: Union[str, int], train_split: int
                  , past_history: int, future_target: int, step: int = 1, batch_size: int = 256,
-                 buffer_size: int = 10000, evaluation_interval: int = 200, epochs: int = 10) -> None:
+                 buffer_size: int = 10000, evaluation_interval: int = 200, epochs: int = 10, seed: int = None) -> None:
         super().__init__()
         self.feature_to_predict = time_series.columns.get_loc(feature_to_predict) if isinstance(feature_to_predict, str) else feature_to_predict
         self.time_series = time_series
@@ -25,6 +25,7 @@ class LSTMPredictor:
         self.batch_size = batch_size
         self.evaluation_interval = evaluation_interval
         self.epochs = epochs
+        self.seed = seed
 
     @lazy_property
     def dataset(self):
@@ -63,6 +64,8 @@ class LSTMPredictor:
         boundary = self.train_split - self.past_history
         self.x_train_multi, y_train_multi = x[0:boundary], y[0:boundary]
         train_data_multi = tf.data.Dataset.from_tensor_slices((self.x_train_multi, y_train_multi))
+        if self.seed:
+            tf.random.set_seed(self.seed)
         return train_data_multi.cache().shuffle(self.buffer_size).batch(self.batch_size).repeat()
 
     @lazy_property

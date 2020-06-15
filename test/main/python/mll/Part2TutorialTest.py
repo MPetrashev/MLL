@@ -13,8 +13,68 @@ from mll.LSTMPredictor import LSTMPredictor
 mpl.rcParams['figure.figsize'] = (8, 6)
 mpl.rcParams['axes.grid'] = False
 
+BATCH_SIZE = 256
+def univariate_data(dataset, start_index, end_index, history_size, target_size):
+    data = []
+    labels = []
+
+    start_index = start_index + history_size
+    if end_index is None:
+        end_index = len(dataset) - target_size
+
+    for i in range(start_index, end_index):
+        indices = range(i - history_size, i)
+        # Reshape data from (history_size,) to (history_size, 1)
+        data.append(np.reshape(dataset[indices], (history_size, 1)))
+        labels.append(dataset[i + target_size])
+    return np.array(data), np.array(labels)
+
 
 class Part2TutorialTest(unittest.TestCase):
+
+    def test_batching(self):
+        """
+        This method tests the logic of batching. It should create 4 dimensional cube: [step, x_or_y, BATCH_SIZE, 1]
+        Where 1st index - is an index of step, 2nd index - x(0) or y(1) (values or labels)
+        , 3rd index - is in a range [0, BATCH_SIZE-1], 4th - is 0 (1 element in array)
+        Splits by history_size chunks and repeats the original x array to such sub-arrays:
+        Step 0:
+            0: [0 to 19]
+            1: [1 to 20]
+            ...
+            BATCH_SIZE-1: [BATCH_SIZE-1 to BATCH_SIZE+19]
+
+        Step 1:
+            0: [1 to 20]
+            1: [2 to 21]
+            ...
+            BATCH_SIZE: [BATCH_SIZE to BATCH_SIZE+20]
+        ...
+
+        """
+        history_size=20
+        x, y = univariate_data(np.asarray(range(1000)), 0, None, history_size, 0)
+        train = tf.data.Dataset.from_tensor_slices((x, y))
+        train = train.cache().batch(BATCH_SIZE).repeat()
+
+        tmp = list(train.take(3).as_numpy_iterator())
+
+
+        def get_array( shift ):
+            # result = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+            return [v+shift for v in range(history_size)]
+
+        step = 0
+        x = tmp[step][0] # 1st element from tuple (x,y)
+        np.testing.assert_array_equal(get_array(0),[v[0] for v in x[0]])
+        np.testing.assert_array_equal(get_array(BATCH_SIZE-1), [v[0] for v in x[BATCH_SIZE-1]])
+
+        step = 2
+        x = tmp[step][0] # 1st element from tuple (x,y)
+        np.testing.assert_array_equal(get_array(BATCH_SIZE*step), [v[0] for v in x[0]])
+        np.testing.assert_array_equal(get_array(BATCH_SIZE*step+BATCH_SIZE-1), [v[0] for v in x[BATCH_SIZE-1]])
+
+
     def test_whole_example(self):
         # # When run everything
         # np.testing.assert_allclose(multi_step_history.history['loss']
@@ -33,21 +93,6 @@ class Part2TutorialTest(unittest.TestCase):
             extract=True)
         csv_path, _ = os.path.splitext(zip_path)
         df = pd.read_csv(csv_path)
-
-        def univariate_data(dataset, start_index, end_index, history_size, target_size):
-            data = []
-            labels = []
-
-            start_index = start_index + history_size
-            if end_index is None:
-                end_index = len(dataset) - target_size
-
-            for i in range(start_index, end_index):
-                indices = range(i - history_size, i)
-                # Reshape data from (history_size,) to (history_size, 1)
-                data.append(np.reshape(dataset[indices], (history_size, 1)))
-                labels.append(dataset[i + target_size])
-            return np.array(data), np.array(labels)
 
         TRAIN_SPLIT = 300000
         tf.random.set_seed(13)
@@ -100,7 +145,6 @@ class Part2TutorialTest(unittest.TestCase):
         def baseline(history):
             return np.mean(history)
 
-        BATCH_SIZE = 256
         BUFFER_SIZE = 10000
 
         train_univariate = tf.data.Dataset.from_tensor_slices((x_train_uni, y_train_uni))
@@ -266,7 +310,7 @@ class Part2TutorialTest(unittest.TestCase):
         STEP = 6
         past_history = 720
         future_target = 72
-        tf.random.set_seed(13)
+        # tf.random.set_seed(13)
         zip_path = tf.keras.utils.get_file(
             origin='https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip',
             fname='jena_climate_2009_2016.csv.zip',
@@ -275,7 +319,7 @@ class Part2TutorialTest(unittest.TestCase):
         df = pd.read_csv(csv_path).set_index('Date Time')
 
         predictor = LSTMPredictor(df[['p (mbar)', 'T (degC)', 'rho (g/m**3)']], 'T (degC)', TRAIN_SPLIT, past_history
-                                  , future_target, STEP, BATCH_SIZE, BUFFER_SIZE, EVALUATION_INTERVAL, EPOCHS)
+                                  , future_target, STEP, BATCH_SIZE, BUFFER_SIZE, EVALUATION_INTERVAL, EPOCHS, seed=13)
 
         for x, y in predictor.training_dataset.take(1):
             np.testing.assert_allclose(y[0].numpy(),[-0.3928871311805136, -0.40678129406519214, -0.42183330385692724, -0.4357274667416058, -0.4519373234403974, -0.46004225178979324, -0.48204134302386753, -0.5028825873508854, -0.5225659847708467, -0.5237238316779033, -0.5202502909567336, -0.52140813786379, -0.529513066213186, -0.5248816785849597, -0.5248816785849597, -0.5306709131202425, -0.5318287600272991, -0.5341444538414121, -0.5630906265178257, -0.6105623497071442, -0.6175094311494833, -0.6244565125918227, -0.6348771347553316, -0.644139910011784, -0.6510869914541233, -0.6534026852682363, -0.6406663692906143, -0.605930962078918, -0.5908789522871829, -0.6047731151718614, -0.6325614409412186, -0.6151937373353703, -0.595510339915409, -0.5966681868224656, -0.6128780435212573, -0.6001417275436353, -0.6128780435212573, -0.6221408187777097, -0.6221408187777097, -0.6198251249635965, -0.5769847894025043, -0.5491964636331472, -0.5654063203319389, -0.5654063203319389, -0.559617085796656, -0.5341444538414121, -0.5480386167260907, -0.567722014146052, -0.5746690955883913, -0.5793004832166173, -0.5723534017742781, -0.5619327796107693, -0.5457229229119777, -0.5457229229119777, -0.5688798610531085, -0.5758269424954477, -0.580458330123674, -0.5816161770307305, -0.5793004832166173, -0.5862475646589567, -0.5862475646589567, -0.5908789522871829, -0.6105623497071442, -0.6406663692906143, -0.6557183790823493, -0.6638233074317452, -0.6649811543388018, -0.6811910110375934, -0.7020322553646112, -0.7205578058775159, -0.7332941218551379, -0.7564510599962688])
