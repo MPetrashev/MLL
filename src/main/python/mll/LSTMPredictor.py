@@ -85,6 +85,7 @@ class LSTMPredictor:
     @lazy_property
     def multi_step_model(self):
         multi_step_model = tf.keras.models.Sequential()
+        self.training_dataset #todo to guarantee initialization of x_train_multi
         multi_step_model.add(tf.keras.layers.LSTM(32, return_sequences=True, input_shape=self.x_train_multi.shape[-2:]))
         multi_step_model.add(tf.keras.layers.LSTM(16))
         multi_step_model.add(tf.keras.layers.Dense(self.future_target))
@@ -92,7 +93,7 @@ class LSTMPredictor:
         multi_step_model.compile(optimizer=tf.keras.optimizers.RMSprop(clipvalue=1.0), loss='mae')
         return multi_step_model
 
-    @lazy_property
+    @lazy_property  # must be accessed before any prediction
     def multi_step_history(self):
         return self.multi_step_model.fit(self.training_dataset, epochs=self.epochs,
                                                        steps_per_epoch=self.evaluation_interval,
