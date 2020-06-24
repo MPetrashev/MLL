@@ -11,12 +11,12 @@ from utils import lazy_property
 
 
 class LSTMPredictor:
-    def __init__(self, time_series: pd.DataFrame, feature_to_predict: Union[str, int], train_split: int
+    def __init__(self, time_series: pd.DataFrame, dependent_variable: Union[str, int], train_split: int
                  , past_history: int, future_target: int, step: int = 1, batch_size: int = 256,
                  buffer_size: int = 10000, evaluation_interval: int = 200, epochs: int = 10, seed: int = None
                  , single_step=False, validation_steps=50) -> None:
         super().__init__()
-        self.feature_to_predict = time_series.columns.get_loc(feature_to_predict) if isinstance(feature_to_predict, str) else feature_to_predict
+        self.dependent_variable = time_series.columns.get_loc(dependent_variable) if isinstance(dependent_variable, str) else dependent_variable
         self.time_series = time_series
         self.train_split = train_split
         self.future_target = future_target
@@ -49,7 +49,7 @@ class LSTMPredictor:
         dataset = self.dataset
         target_size = self.future_target
         history_size = self.past_history
-        target = self.dataset[:, self.feature_to_predict]
+        target = self.dataset[:, self.dependent_variable]
         step = self.step
         data = []
         labels = []
@@ -99,3 +99,13 @@ class LSTMPredictor:
                                                        steps_per_epoch=self.evaluation_interval,
                                                        validation_data=self.validation_dataset,
                                                        validation_steps=self.validation_steps)
+
+    def _multi_step_df(self, history, true_future, prediction):
+        return pd.DataFrame.from_dict({
+                'True Future': np.concatenate([history[:, self.dependent_variable], true_future[0::self.step]]),
+                'Predicted Future': np.concatenate([np.repeat(None,len(history)) , prediction[0::self.step]])
+            })
+
+    def multi_step_dfs(self, count: int=1):
+        model = self.multi_step_model
+        return [self._multi_step_df(x[0], y[0], model.predict(x)[0] ) for x, y in self.validation_dataset.take(count)]

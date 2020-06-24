@@ -1,4 +1,3 @@
-import plotly.offline as py
 import plotly.graph_objs as go
 
 
@@ -31,4 +30,4 @@ def plot_df(df, x_title: str = None, y_title: str = None, title: str = None):
     data = [go.Scatter(x=x, y=values, name=column) for column, values in df.iteritems()] # todo is df.itertuples faster?
     layout = go.Layout(showlegend=True, xaxis={'title': x_title} if x_title else None
                        , yaxis={'title': y_title} if y_title else None, title=title)
-    py.iplot(go.Figure(data=data, layout=layout), filename='basic-line')
+    return go.FigureWidget(data=data, layout=layout)
