@@ -11,9 +11,14 @@ ipython kernel install --user --name=mll
 ```
 
 ```
-conda create --name mll_gpu python ipykernel tensorflow-gpu quandl matplotlib scikit-learn plotly nbformat
-
+conda create --name mll_gpu python jupyter tensorflow-gpu==2.1 quandl matplotlib scikit-learn plotly nbformat
 activate mll_gpu
 ipython kernel install --user --name=mll_gpu
 ```
 To run tests in PyCharm, please, run `conda install -c anaconda tensorflow=2.0` outside of `mll` virtual environment.
+
+
+To use __yfinance__:
+```
+conda install numpy=1.19.2 python=3.7.9 pandas=1.1.3
+```
