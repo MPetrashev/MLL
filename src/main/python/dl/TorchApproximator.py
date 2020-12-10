@@ -23,7 +23,7 @@ class Net(torch.nn.Module):
 
 class TorchApproximator:
     def fit_net(self, net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor,
-                pct_test: int, pct_validation: int, device: str = 'cpu'):
+                pct_test: float, pct_validation: float, device: str = 'cpu'):
 
         n = y.size()[0]
         n_train = int(np.round(n * (1 - pct_test - pct_validation)))
@@ -44,8 +44,7 @@ class TorchApproximator:
         optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
         loss_func = torch.nn.MSELoss()
 
-        l = 123.45
-        best_l = 1000.  # max( y ) or 1e-3
+        best_l = y.abs().max().item()
         checkpoint = {}
         losses = []
 
@@ -70,7 +69,5 @@ class TorchApproximator:
                     "optimizer_state_dict": optimizer.state_dict(),
                 }
             losses.append([e + 1, l.item()])
-        #         if (e + 1) % 100 == 0:
-        #             print(f"\tEpoch: {e+1}\tL2 Loss = {loss.data.cpu().numpy()}")
 
         return best_l, checkpoint, pd.DataFrame(losses, columns=['Step', 'Loss'])
