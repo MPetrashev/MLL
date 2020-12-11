@@ -60,7 +60,7 @@ class ApproximatorTest(TestCase):
     def test_BS_example(self):
         np.random.seed(seed)
         torch.manual_seed(seed)
-ф
+
         approximator = TorchApproximator()
         df = self.get_test_data('put_prices.csv')
         checkpoint, df = approximator.train(df.drop(columns=['PV']).values.T, df.PV.values, n_epochs=6000, n_hidden=100)
