@@ -93,6 +93,3 @@ def matrix_to_df(data: List[List[float]], columns=None, pattern='Scenario {}', t
     if index_name:
         result.index.name = index_name
     return result
-
-
-ф
