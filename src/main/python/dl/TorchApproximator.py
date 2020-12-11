@@ -3,6 +3,9 @@ import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 
+from utils import Timer
+
+
 class Net(torch.nn.Module):
     def __init__(self, n_feature, n_hidden, n_layers, n_output):
         super(Net, self).__init__()
@@ -22,6 +25,11 @@ class Net(torch.nn.Module):
 
 
 class TorchApproximator:
+
+    def __init__(self, seed: int = 314) -> None:
+        super().__init__()
+        self.seed = seed
+
     def fit_net(self, net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor,
                 pct_test: float, pct_validation: float, device: str = 'cpu'):
 
@@ -68,6 +76,40 @@ class TorchApproximator:
                     "model_state_dict": net.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                 }
-            losses.append([e + 1, l.item()])
+            losses.append([e + 1, l.item(), loss.data.cpu().numpy().item()])
 
-        return best_l, checkpoint, pd.DataFrame(losses, columns=['Step', 'Loss'])
+        return best_l, checkpoint, pd.DataFrame(losses, columns=['Epoch', 'Loss Test', 'Loss'])
+
+    def train(self, states, pvs, n_epochs=6000, pct_test=0.2  # Portion for test set
+              , pct_validation=0.1  # Portion for validation set
+              , device="cpu", n_hidden:int =1500, n_layers:int =4):
+        np.random.seed(self.seed)
+        self.generator = torch.manual_seed(self.seed)
+
+        self.pct_validation = pct_validation
+        self.samples_t = torch.from_numpy(states.T).float()
+        self.values_t = torch.from_numpy(pvs).float().unsqueeze(dim=1)
+        n_features = states.shape[0]
+        net = Net(n_feature=n_features, n_hidden=n_hidden, n_layers=n_layers, n_output=1)  # define the network
+        ls, checkpoint, df = self.fit_net(net, n_epochs, self.samples_t, self.values_t, pct_test, pct_validation, device)
+        checkpoint['n_features'] = n_features
+        return checkpoint, df
+
+    def load_model(self, checkpoint, device="cpu"):
+        model = Net(n_feature=checkpoint["n_features"],
+                    n_hidden=checkpoint["n_hidden"],
+                    n_layers=checkpoint["n_layers"],
+                    n_output=1)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+        model.to(device)
+        return model
+
+    def validation_set(self, model, device="cpu"):
+        n = self.values_t.size()[0]
+        ind_validation = int(np.round(n * (1 - self.pct_validation)))
+        samples_validation = self.samples_t[ind_validation:].to(device)
+        values_validation = self.values_t[ind_validation:]  # original PVs
+        v_nn = model(samples_validation).flatten().data.cpu().numpy()  # approximated PVs
+        error = v_nn - values_validation.flatten().data.cpu().numpy()
+        return v_nn, error
