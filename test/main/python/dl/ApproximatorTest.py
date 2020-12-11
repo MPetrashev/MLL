@@ -57,6 +57,15 @@ class ApproximatorTest(TestCase):
         df = pd.DataFrame.from_dict({'PV' : values,'S':samples[0], 'T':samples[1], 'vol':samples[2], 'r':samples[3], 'q':samples[4]})
         self.assert_frame_equal('put_prices.csv', df)
 
+    def test_BS_example(self):
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+ф
+        approximator = TorchApproximator()
+        df = self.get_test_data('put_prices.csv')
+        checkpoint, df = approximator.train(df.drop(columns=['PV']).values.T, df.PV.values, n_epochs=6000, n_hidden=100)
+        self.assert_frame_equal('bs_example.csv', df)
+        
     def test_torch_approximator(self):
         torch.manual_seed(seed)
 
