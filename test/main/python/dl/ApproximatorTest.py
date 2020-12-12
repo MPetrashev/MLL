@@ -9,6 +9,8 @@ from dl import TorchApproximator
 from dl.TorchApproximator import Net
 from scipy.stats import norm
 
+from utils import bps
+
 
 def ds(K, S, T, vol, r, q):
     vol_T = vol * np.sqrt(T)
@@ -29,13 +31,8 @@ def put(K, S, T, vol, r, q):
 
 v_put = np.vectorize(put)
 seed = 314
-device = "cpu"
-if torch.cuda.is_available():
-    device = "cuda:0"
-    print(f"GPU detected. Running on {device}")
-else:
-    print("No GPU detected. Running on CPU")
-device="cuda:0"
+n_epochs = 6000
+
 
 class ApproximatorTest(TestCase):
 
@@ -44,11 +41,11 @@ class ApproximatorTest(TestCase):
 
         n_samples = 100000  # Total number of samples
         domain = {
-            "spot": (0.5, 2),
-            "time": (0, 3.0),
-            "sigma": (0.1, 0.5),
-            "rate": (-0.01, 0.03),
-            "div": (0, 0.02)
+            'spot': (0.5, 2),
+            'time': (0, 3.0),
+            'sigma': (0.1, 0.5),
+            'rate': (-0.01, 0.03),
+            'div': (0, 0.02)
         }
         samples = np.zeros(shape=(len(domain.keys()), n_samples))
         for i, r in enumerate(domain.values()):
@@ -63,15 +60,18 @@ class ApproximatorTest(TestCase):
 
         approximator = TorchApproximator()
         df = self.get_test_data('put_prices.csv')
-        checkpoint, df = approximator.train(df.drop(columns=['PV']).values.T, df.PV.values, n_epochs=6000, n_hidden=100)
+        checkpoint, df = approximator.train(df.drop(columns=['PV']).values.T, df.PV.values, n_epochs=n_epochs, n_hidden=100)
         self.assert_frame_equal('bs_example.csv', df)
+
+        model = approximator.load_model(checkpoint)
+        original, approximation = approximator.validation_set(model)
+        self.assertTrue(max(np.vectorize(bps)(original, approximation)) < 80)
         
     def test_torch_approximator(self):
         torch.manual_seed(seed)
 
         approximator = TorchApproximator()
         net = Net(n_feature=5, n_hidden=100, n_layers=4, n_output=1)  # define the network
-        n_epochs = 6000
         pct_test = 0.2  # Portion for test set
         pct_validation = 0.1  # Portion for validation set
         df = self.get_test_data('put_prices.csv')
@@ -80,8 +80,8 @@ class ApproximatorTest(TestCase):
         samples_t = torch.from_numpy(samples.T).float()
         values_t = torch.from_numpy(values).float().unsqueeze(dim=1)
 
-        ls, checkpoint, df = approximator.fit_net(net, n_epochs, samples_t, values_t, pct_test, pct_validation, device)
-        self.assert_frame_equal('torch_steps.csv', df)
+        ls, checkpoint, df = approximator.fit_net(net, n_epochs, samples_t, values_t, pct_test, pct_validation)
+        self.assert_frame_equal('torch_steps.csv', df[['Epoch','Loss Test']]) # see <a href="torch_steps.png">Chart</a>
 
 
 if __name__ == '__main__':

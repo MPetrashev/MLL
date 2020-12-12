@@ -30,7 +30,6 @@ def nb_logging_init():
     import logging
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    logging.getLogger("caf").setLevel(logging.WARNING)
 
     logger.addHandler(logging.StreamHandler())
     return logger
@@ -38,8 +37,6 @@ def nb_logging_init():
 
 def init_env(work_dir:str) -> None:
     logger = nb_logging_init()
-    from epe.CAFInvoker import caf_configure
-    caf_configure()
     global_vars = globals()['__builtins__']
 
     global_vars['logger'] = logger
@@ -93,3 +90,14 @@ def matrix_to_df(data: List[List[float]], columns=None, pattern='Scenario {}', t
     if index_name:
         result.index.name = index_name
     return result
+
+
+def bps(a, b):
+    """
+    :param a:
+    :param b:
+    :return: Relative difference in bps between a and b. If abs(a) < 1 the absolute difference in bps is returned
+    """
+    diff = abs(b - a)
+    a = abs(a)
+    return int(diff / a * 10000 if a > 100 else diff * 100)
