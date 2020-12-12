@@ -61,28 +61,12 @@ class ApproximatorTest(TestCase):
         approximator = TorchApproximator()
         df = self.get_test_data('put_prices.csv')
         checkpoint, df = approximator.train(df.drop(columns=['PV']).values.T, df.PV.values, n_epochs=n_epochs, n_hidden=100)
-        self.assert_frame_equal('bs_example.csv', df, compare_just_head=True)
+        self.assert_frame_equal('torch_steps.csv', df, compare_just_head=True)
 
         model = approximator.load_model(checkpoint)
         original, approximation = approximator.validation_set(model)
         self.assertLess(max(np.vectorize(bps)(original, approximation)), 80)
         
-    def test_torch_approximator(self):
-        torch.manual_seed(seed)
-
-        approximator = TorchApproximator()
-        net = Net(n_feature=5, n_hidden=100, n_layers=4, n_output=1)  # define the network
-        pct_test = 0.2  # Portion for test set
-        pct_validation = 0.1  # Portion for validation set
-        df = self.get_test_data('put_prices.csv')
-        values = df.PV.values
-        samples = df.iloc[:,1:].values.T
-        samples_t = torch.from_numpy(samples.T).float()
-        values_t = torch.from_numpy(values).float().unsqueeze(dim=1)
-
-        ls, checkpoint, df = approximator.fit_net(net, n_epochs, samples_t, values_t, pct_test, pct_validation)
-        self.assert_frame_equal('torch_steps.csv', df[['Epoch','Loss Test']]) # see <a href="torch_steps.png">Chart</a>
-
 
 if __name__ == '__main__':
     unittest.main()
