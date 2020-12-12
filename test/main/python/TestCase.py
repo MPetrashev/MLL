@@ -26,15 +26,19 @@ class TestCase(unittest.TestCase):
         file = self.absolute(file_name)
         return pd.read_csv(file, na_filter=False, parse_dates=True, index_col=index_col)
 
-    def assert_frame_equal(self, expected_df: Union[str, pd.DataFrame], actual_df: pd.DataFrame, ):
+    def assert_frame_equal(self, expected_df: Union[str, pd.DataFrame], actual_df: pd.DataFrame
+                           , compare_just_head: bool = False):
         """
         Compares input DataFrame with the other DataFrame or data in csv file.
         :param actual_df:
         :param other_df:
+        :param compare_just_head: if False just first rows in expect_df are compared to all rows in actual_df
         :return:
         """
         if isinstance(expected_df, str):
             expected_df = self.get_test_data(expected_df, actual_df.index.name)
+        if compare_just_head:
+            expected_df = expected_df.head(actual_df.shape[0])
 
         dtypes = actual_df.dtypes.to_dict()
         for column, expected_type in expected_df.dtypes.to_dict().items():

@@ -61,11 +61,11 @@ class ApproximatorTest(TestCase):
         approximator = TorchApproximator()
         df = self.get_test_data('put_prices.csv')
         checkpoint, df = approximator.train(df.drop(columns=['PV']).values.T, df.PV.values, n_epochs=n_epochs, n_hidden=100)
-        self.assert_frame_equal('bs_example.csv', df)
+        self.assert_frame_equal('bs_example.csv', df, compare_just_head=True)
 
         model = approximator.load_model(checkpoint)
         original, approximation = approximator.validation_set(model)
-        self.assertTrue(max(np.vectorize(bps)(original, approximation)) < 80)
+        self.assertLess(max(np.vectorize(bps)(original, approximation)), 80)
         
     def test_torch_approximator(self):
         torch.manual_seed(seed)
