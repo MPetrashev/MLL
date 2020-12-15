@@ -5,8 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from dl import TorchApproximator
-from dl.TorchApproximator import Net
+from dl import TorchApproximator, TFApproximator
 from scipy.stats import norm
 
 from utils import bps
@@ -36,7 +35,7 @@ n_epochs = 6000
 
 class ApproximatorTest(TestCase):
 
-    def test_put_prices(self):
+    def test_put_BS_prices(self):
         np.random.seed(seed)
 
         n_samples = 100000  # Total number of samples
@@ -54,7 +53,7 @@ class ApproximatorTest(TestCase):
         df = pd.DataFrame.from_dict({'PV' : values,'S':samples[0], 'T':samples[1], 'vol':samples[2], 'r':samples[3], 'q':samples[4]})
         self.assert_frame_equal('put_prices.csv', df)
 
-    def test_BS_example(self):
+    def test_torch_put_BS_example(self):
         np.random.seed(seed)
         torch.manual_seed(seed)
 
@@ -66,7 +65,13 @@ class ApproximatorTest(TestCase):
         model = approximator.load_model(checkpoint)
         original, approximation = approximator.validation_set(model)
         self.assertLess(max(np.vectorize(bps)(original, approximation)), 80)
-        
+
+    def test_tf_put_BS_example(self):
+        approximator = TFApproximator()
+        df = self.get_test_data('put_prices.csv')
+        checkpoint, df = approximator.train(df.loc[:, df.columns != 'PV'], df.PV, n_epochs=n_epochs, n_hidden=100)
+        self.assert_frame_equal('tf_steps.csv', df, compare_just_head=True)
+
 
 if __name__ == '__main__':
     unittest.main()

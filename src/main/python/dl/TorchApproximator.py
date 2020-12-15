@@ -92,7 +92,7 @@ class TorchApproximator:
 
     def train(self, states, pvs, n_epochs=6000, pct_test=0.2  # Portion for test set
               , pct_validation=0.1  # Portion for validation set
-              , n_hidden:int =1500, n_layers:int =4):
+              , n_hidden: int = 1500, n_layers: int = 4):
         self.pvs = pvs
         np.random.seed(self.seed)
         self.generator = torch.manual_seed(self.seed)

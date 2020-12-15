@@ -1,9 +1,9 @@
 import os
-import sys
 import traceback
-from typing import List
+from typing import List, Union
 
 import pandas as pd
+import numpy as np
 from utils.lazy_property import lazy_property
 from utils.Timer import Timer
 import datetime as dt
@@ -101,3 +101,11 @@ def bps(a, b):
     diff = abs(b - a)
     a = abs(a)
     return int(diff / a * 10000 if a > 100 else diff * 100)
+
+
+def as_ndarray(dataset: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
+    """
+    :param dataset:
+    :return: Converts, if necessary, pd.DataFrame or pd.Series into np.ndarray
+    """
+    return dataset.to_numpy() if isinstance(dataset, (pd.DataFrame,pd.Series)) else dataset

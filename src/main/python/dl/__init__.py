@@ -1,1 +1,2 @@
 from dl.TorchApproximator import TorchApproximator
+from dl.TFApproximator import TFApproximator
