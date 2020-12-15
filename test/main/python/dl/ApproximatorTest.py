@@ -69,8 +69,8 @@ class ApproximatorTest(TestCase):
     def test_tf_put_BS_example(self):
         approximator = TFApproximator()
         df = self.get_test_data('put_prices.csv')
-        checkpoint, df = approximator.train(df.loc[:, df.columns != 'PV'], df.PV, n_epochs=n_epochs, n_hidden=100)
-        self.assert_frame_equal('tf_steps.csv', df, compare_just_head=True)
+        checkpoint, history = approximator.train(df.iloc[:, df.columns != 'PV'], df.PV, n_epochs=n_epochs, n_hidden=100)
+        self.assert_frame_equal('tf_steps.csv', history, compare_just_head=True)
 
 
 if __name__ == '__main__':

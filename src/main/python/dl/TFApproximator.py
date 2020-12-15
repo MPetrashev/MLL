@@ -50,8 +50,13 @@ class TFApproximator:
                  + [keras.layers.Dense(n_hidden, activation='relu') for i in range(n_layers)] \
                  + [keras.layers.Dense(1)]  # + [keras.layers.Dense(1, activation='softmax')]
         model = tf.keras.models.Sequential(layers)
-        model.compile(optimizer=tf.keras.optimizers.Adam(lr=lr), loss='mse', metrics=['accuracy'])
         batch_size = round(split_idx*(1-validation_split))
+        # todo https://towardsdatascience.com/eager-execution-vs-graph-execution-which-is-better-38162ea4dbf6
+        # Note that when you wrap your model with tf.function(), you cannot use several model functions like model.compile() and model.fit() because they already try to build a graph automatically. But we will cover those examples in a different and more advanced level post of this series.
+
+        # run_eagerly explained here: https://www.tensorflow.org/guide/intro_to_graphs. If it is False, the graph 1st
+        # time would be optimized. Otherwise python operations would be called again and again
+        model.compile(run_eagerly=False, optimizer=tf.keras.optimizers.Adam(lr=lr), loss='mse', metrics=['accuracy'])
         history = model.fit(X_train, Y_train, batch_size=batch_size, epochs=n_epochs, validation_split=validation_split
                             , verbose=verbose)
         return model, pd.DataFrame.from_dict(history.history)
