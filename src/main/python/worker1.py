@@ -3,8 +3,8 @@ import json
 
 tf_config = {
     'cluster': {
-        'worker': ['akmaserver:12345','akmaserver:23456']
-        # 'worker': ['localhost:12345','desktop-VG8BID2:23456']
+        # 'worker': ['akmaserver:12345','akmaserver:23456']
+        'worker': ['akmaserver:12345','desktop-VG8BID2:23456']
     },
     'task': {'type': 'worker', 'index': 0}
 }
