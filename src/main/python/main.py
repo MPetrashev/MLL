@@ -1,20 +1,11 @@
-import os
 import json
+import os
 
 import tensorflow as tf
 import mnist
 
 per_worker_batch_size = 64
-# tf_config = json.loads(os.environ['TF_CONFIG'])
-tf_config = {
-    'cluster': {
-        'worker': ['localhost:12345']
-        # 'worker': ['localhost:12345','desktop-VG8BID2:12345']
-    },
-    'task': {'type': 'worker', 'index': 0}
-}
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-os.environ['TF_CONFIG'] = json.dumps(tf_config)
+tf_config = json.loads(os.environ['TF_CONFIG'])
 
 num_workers = len(tf_config['cluster']['worker'])
 
