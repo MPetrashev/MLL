@@ -11,8 +11,10 @@ ipython kernel install --user --name=mll
 ```
 
 ```
-conda create --name mll_gpu python jupyter pytorch=1.7.0 tensorflow-gpu==2.1 quandl matplotlib scikit-learn plotly nbformat
+conda create --name mll_gpu python jupyter quandl matplotlib scikit-learn plotly nbformat
 activate mll_gpu
+pip install tensorflow==2.2.0
+pip install pytorch==1.7.0
 ipython kernel install --user --name=mll_gpu
 ```
 pytorch=1.7.0 - otherwise torch.cuda.is_available() wouldn't be true
