@@ -3,6 +3,7 @@ import os
 
 import tensorflow as tf
 import mnist
+from utils import nb_logging_init, Timer
 
 per_worker_batch_size = 64
 tf_config = json.loads(os.environ['TF_CONFIG'])
@@ -19,4 +20,6 @@ with strategy.scope():
   multi_worker_model = mnist.build_and_compile_cnn_model()
 
 
-multi_worker_model.fit(multi_worker_dataset, epochs=3, steps_per_epoch=70)
+nb_logging_init()
+with Timer('Single node'):
+  multi_worker_model.fit(multi_worker_dataset, epochs=3, steps_per_epoch=70)
