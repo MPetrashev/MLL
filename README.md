@@ -11,9 +11,10 @@ ipython kernel install --user --name=mll
 ```
 
 ```
-conda create --name mll_gpu python jupyter quandl matplotlib scikit-learn plotly nbformat
-activate mll_gpu
-pip install tensorflow==2.2.0
+conda create --name mll_gpu python=3.6.6 jupyter quandl matplotlib scikit-learn plotly nbformat
+conda create --name tf_cluster_test python=3.6.6
+activate tf_cluster_test
+pip install tensorflow==2.2.0 numpy==1.19.3
 pip install pytorch==1.7.0
 ipython kernel install --user --name=mll_gpu
 ```
@@ -22,6 +23,10 @@ To run tests in PyCharm, please, run `conda install -c anaconda tensorflow=2.0` 
 
 
 To use __yfinance__:
+
+!!!Last installation tensorflow==2.1.0 for C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1\bin:
 ```
-conda install numpy=1.19.2 python=3.7.9 pandas=1.1.3
+conda create --name tf_cluster_test python=3.7.9 numpy=1.19.2 tensorflow==2.1.0 pandas=1.1.3
+activate tf_cluster_test
+pip install tensorflow==2.3.0 # see https://github.com/tensorflow/tensorflow/issues/36153 but doesn't work with my NVIDIA
 ```
