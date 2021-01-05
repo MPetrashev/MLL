@@ -28,5 +28,4 @@ To use __yfinance__:
 ```
 conda create --name tf_cluster_test python=3.7.9 numpy=1.19.2 tensorflow==2.1.0 pandas=1.1.3
 activate tf_cluster_test
-pip install tensorflow==2.3.0 # see https://github.com/tensorflow/tensorflow/issues/36153 but doesn't work with my NVIDIA
 ```
