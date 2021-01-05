@@ -3,6 +3,7 @@ from typing import Tuple
 from tensorflow import keras
 import tensorflow as tf
 import pandas as pd
+import numpy as np
 
 from utils import as_ndarray
 
@@ -39,24 +40,25 @@ class TFApproximator:
         """
         pvs, states = as_ndarray(pvs), as_ndarray(states)
         n_rows, n_features = states.shape
-        split_idx = int(round(n_rows * (1. - pct_validation)))
-        validation_split = pct_test / (1. - pct_validation)
+        splits = [int(round(n_rows*x)) for x in [1.-pct_test-pct_validation, 1.-pct_validation]]
 
-        Y_train, Y_test = pvs[:split_idx], pvs[split_idx:]
-        X_train, X_test = states[:split_idx, :], states[split_idx:, :]
+        Y_train, Y_validation, Y_test = np.split(pvs, splits)
+        X_train, X_validation, X_test = np.split(states, splits)
 
         n_features = states.shape[1]       # number of columns
         layers = [keras.layers.Dense(n_hidden, input_shape=(n_features,), activation='relu')] \
                  + [keras.layers.Dense(n_hidden, activation='relu') for i in range(n_layers)] \
                  + [keras.layers.Dense(1)]  # + [keras.layers.Dense(1, activation='softmax')]
         model = tf.keras.models.Sequential(layers)
-        batch_size = round(split_idx*(1-validation_split))
         # todo https://towardsdatascience.com/eager-execution-vs-graph-execution-which-is-better-38162ea4dbf6
         # Note that when you wrap your model with tf.function(), you cannot use several model functions like model.compile() and model.fit() because they already try to build a graph automatically. But we will cover those examples in a different and more advanced level post of this series.
 
         # run_eagerly explained here: https://www.tensorflow.org/guide/intro_to_graphs. If it is False, the graph 1st
         # time would be optimized. Otherwise python operations would be called again and again
         model.compile(run_eagerly=False, optimizer=tf.keras.optimizers.Adam(lr=lr), loss='mse', metrics=['accuracy'])
-        history = model.fit(X_train, Y_train, batch_size=batch_size, epochs=n_epochs, validation_split=validation_split
-                            , verbose=verbose)
+        ds_train = tf.data.Dataset.from_tensors((X_train, Y_train))
+        ds_validation = tf.data.Dataset.from_tensors((X_validation, Y_validation))
+        # history = model.fit(X_train, Y_train, batch_size=batch_size, epochs=n_epochs, validation_split=validation_split
+        #                     , verbose=verbose)
+        history = model.fit(ds_train, validation_data=ds_validation, epochs=n_epochs, verbose=verbose)
         return model, pd.DataFrame.from_dict(history.history)
