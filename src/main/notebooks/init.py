@@ -9,7 +9,7 @@ def init():
     global_vars = globals()['__builtins__']
     sys.path.extend([os.path.abspath('../python')])
 
-    from mll import nb_logging_init
+    from utils import nb_logging_init
     nb_logging_init()
 
 

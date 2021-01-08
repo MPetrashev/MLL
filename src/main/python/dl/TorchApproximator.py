@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 
+from utils import as_ndarray
+
 logger = logging.getLogger(__file__)
 
 
@@ -20,7 +22,7 @@ class Net(torch.nn.Module):
 
     def forward(self, x):
         for lin in self.linears[:-1]:
-            x = F.relu(lin(x))       # Activation function for hidden layer
+            x = F.relu(lin(x))              # Activation function for hidden layer
         x = self.linears[-1](x)             # Apply last layer without activation
         return x
 
@@ -93,6 +95,7 @@ class TorchApproximator:
     def train(self, states, pvs, n_epochs=6000, pct_test=0.2  # Portion for test set
               , pct_validation=0.1  # Portion for validation set
               , n_hidden: int = 1500, n_layers: int = 4):
+        pvs, states = as_ndarray(pvs), as_ndarray(states)
         self.pvs = pvs
         np.random.seed(self.seed)
         self.generator = torch.manual_seed(self.seed)

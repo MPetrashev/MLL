@@ -1,7 +1,7 @@
 import pandas as pd
 import datetime as dt
 import plotly.graph_objs as go
-import plotly.offline as py
+import plotly as py
 
 excel_t0_date = dt.datetime(1899, 12, 30)
 
@@ -28,7 +28,7 @@ def plot_df(df, x_title: str = None, y_title: str = None, title: str = None):
     data[0].visible = data[-1].visible = True
     layout = go.Layout(showlegend=True, xaxis={'title': x_title} if x_title else None
                        , yaxis={'title': y_title} if y_title else None, title=title)
-    py.iplot(go.Figure(data=data, layout=layout), filename='basic-line')
+    py.plot(go.Figure(data=data, layout=layout), kind='notebook')
 
 
 def plot_df_by_dates(df: pd.DataFrame, x_title: str = None, y_title: str = None, title: str = None
@@ -79,4 +79,4 @@ def plot_df_by_dates(df: pd.DataFrame, x_title: str = None, y_title: str = None,
     layout = go.Layout(showlegend=True, xaxis={'title': x_title} if x_title else None
                        , yaxis={'title': y_title} if y_title else None, title=title
                        , updatemenus=[{'active': 0, 'buttons': buttons}])
-    py.iplot(go.Figure(data=data, layout=layout), filename='basic-line')
+    py.plot(go.Figure(data=data, layout=layout), kind='notebook')
