@@ -29,3 +29,20 @@ To use __yfinance__:
 conda create --name tf_cluster_test python=3.7.9 numpy=1.19.2 tensorflow==2.1.0 pandas=1.1.3
 activate tf_cluster_test
 ```
+
+## AutoML
+```
+conda create --name automl pip requests tabulate scikit-learn jupyter ipykernel
+activate automl
+ipython kernel install --user --name=automl
+pip uninstall h2o
+pip install -f http://h2o-release.s3.amazonaws.com/h2o/latest_stable_Py.html h2o
+```
+
+## Best config/params lookup
+* Original:
+    * Torch: Mean error = 0.0001, StDev = 0.0012
+* v * 100. put price, n_epochs = 6000, n_layers = 4, n_hidden = 100
+    * Torch: Mean error = 0.0042583657125902195, 0.0905587802924326
+    * TFApproximator (5m 30.298s): -0.010638369223945138, 0.08173625354977596
+    * TorchApproximator (1m 24.836s): 0.0042583657125902195, 0.0905587802924326

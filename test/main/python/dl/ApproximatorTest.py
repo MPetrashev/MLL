@@ -65,6 +65,9 @@ class ApproximatorTest(TestCase):
         model = approximator.load_model(checkpoint)
         original, approximation = approximator.validation_set(model)
         self.assertLess(max(np.vectorize(bps)(original, approximation)), 80)
+        error = approximation-original
+        self.assertEqual(np.mean(error), 0.0042583657125902195) # abs((error).mean()) deviation is closed to 0
+        self.assertEqual(np.std(error), 0.0905587802924326) # math.sqrt( ((approximation-original)**2).mean() ) mse is small
 
     def test_tf_put_BS_example(self):
         approximator = TFApproximator()
