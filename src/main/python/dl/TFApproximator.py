@@ -22,10 +22,12 @@ class TFApproximator:
     def __init__(self, seed: int = 314) -> None:
         tf.random.set_seed(seed)
 
-    # todo swap test and validation names
+    # todo swap test and validation names.
+    # todo refactor: move out build_model call
     def train(self, states, pvs, n_epochs=6000, pct_test=0.2  # Portion for test set
               , pct_validation=0.1  # Portion for validation set
-              , n_hidden: int = 1500, n_layers: int = 4, lr=0.01, verbose=0) -> Tuple[tf.keras.Model, pd.DataFrame]:
+              , n_hidden: int = 1500, n_layers: int = 4, lr=0.01, verbose=0
+              , callbacks=None) -> Tuple[tf.keras.Model, pd.DataFrame]:
         """
         :param states:
         :param pvs:
@@ -38,6 +40,12 @@ class TFApproximator:
         :param verbose:
         :return: trained model and history DataFrame[loss,accuracy,val_loss,val_accuracy]
         """
+        model, ds_train, ds_validation = self.build_model(lr, n_hidden, n_layers, pct_test, pct_validation, pvs, states)
+        history = model.fit(ds_train, validation_data=ds_validation, epochs=n_epochs, verbose=verbose,
+                            callbacks=callbacks)
+        return model, pd.DataFrame.from_dict(history.history)
+
+    def build_model(self, lr, n_hidden, n_layers, pct_test, pct_validation, pvs, states):
         pvs, states = as_ndarray(pvs), as_ndarray(states)
         n_rows, n_features = states.shape
         splits = [int(round(n_rows*x)) for x in [1.-pct_test-pct_validation, 1.-pct_validation]]
@@ -56,9 +64,8 @@ class TFApproximator:
         # run_eagerly explained here: https://www.tensorflow.org/guide/intro_to_graphs. If it is False, the graph 1st
         # time would be optimized. Otherwise python operations would be called again and again
         model.compile(run_eagerly=False, optimizer=tf.keras.optimizers.Adam(lr=lr), loss='mse', metrics=['accuracy'])
-        ds_train = tf.data.Dataset.from_tensors((X_train, Y_train))
-        ds_validation = tf.data.Dataset.from_tensors((X_validation, Y_validation))
-        # history = model.fit(X_train, Y_train, batch_size=batch_size, epochs=n_epochs, validation_split=validation_split
-        #                     , verbose=verbose)
-        history = model.fit(ds_train, validation_data=ds_validation, epochs=n_epochs, verbose=verbose)
-        return model, pd.DataFrame.from_dict(history.history)
+        options = tf.data.Options()
+        options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+        ds_train = tf.data.Dataset.from_tensors((X_train, Y_train)).with_options(options)
+        ds_validation = tf.data.Dataset.from_tensors((X_validation, Y_validation)).with_options(options)
+        return model, ds_train, ds_validation
