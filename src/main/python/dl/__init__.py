@@ -16,8 +16,8 @@ else:
     logger.info('There is no GPU on your machine')
 
 from dl.TorchApproximator import TorchApproximator
-from dl.TFApproximator import TFApproximator
-from dl.PlotlyCallback import plotly_callback
+# from dl.TFApproximator import TFApproximator
+# from dl.PlotlyCallback import plotly_callback
 
 
 def log_epoch(epoch, logs) -> None:
