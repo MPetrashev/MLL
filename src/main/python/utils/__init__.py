@@ -109,3 +109,36 @@ def as_ndarray(dataset: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
     :return: Converts, if necessary, pd.DataFrame or pd.Series into np.ndarray
     """
     return dataset.to_numpy() if isinstance(dataset, (pd.DataFrame,pd.Series)) else dataset
+
+
+def vrange(start, stop=None, step=1):
+    """
+    Verbose version of range() generator which does output % of completion on each iteration
+    :param start:
+    :param stop:
+    :param step:
+    :return:
+    """
+    if stop is None:
+        stop = start
+        start = 0
+    N = (stop - start) / step
+    for e in range(start, stop, step):
+        yield e
+        completed = int( (e+1) * 100 / N )
+        print(f'{completed:2d}% completed', end='\r', flush=True)
+
+
+def venumerate(sequence, start=0):
+    """
+    Verbose version of enumerate() generator which does output % of completion on each iteration
+    :param sequence:
+    :param start:
+    :return:
+    """
+    N = len(sequence)
+    print(f'Maxim:{N}', flush=True)
+    for e in enumerate(sequence, start):
+        yield e
+        completed = int( (e+1) * 100 / N )
+        print(f'{completed:2d}% completed', end='\r', flush=True)
