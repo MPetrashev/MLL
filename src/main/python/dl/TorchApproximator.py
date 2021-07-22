@@ -3,8 +3,10 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import pandas as pd
+import gc
+from torch.utils.data import DataLoader, TensorDataset
 
-from utils import as_ndarray
+from utils import as_ndarray, vrange
 
 logger = logging.getLogger(__file__)
 
@@ -22,16 +24,45 @@ class Net(torch.nn.Module):
 
     def forward(self, x):
         for lin in self.linears[:-1]:
-            x = F.relu(lin(x))              # Activation function for hidden layer
+            x = lin(x)
+            x = F.relu(x)              # Activation function for hidden layer
         x = self.linears[-1](x)             # Apply last layer without activation
         return x
 
 
-def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test: float,
-            pct_validation: float, device: str='cpu'):
+def wipe_memory(optimizer):
+    """
+    Example taken from here: https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/27
+    todo: but didn't use
+        def _optimizer_to(self, device)
+    as soon as it works without this method yet. But needs to wait some time. May be 30 secs
+    :return:
+    """
+    gc.collect()
+    torch.cuda.empty_cache()
+    logger.info(f'GPU cache is cleared')
+
+
+def run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer):
+    prediction = net(x_)
+    loss = loss_func(prediction, y_)
+
+    prediction_test = net(x_test_)
+    loss_test = loss_func(prediction_test, y_test_).data.cpu().numpy().item()
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    return loss.data.cpu().numpy().item(), loss_test
+
+
+def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test: float, pct_validation: float, lr=0.01
+            , batch_size: int = None, shuffle=False, device: str='cpu'):
 
     n = y.size()[0]
     n_train = int(np.round(n * (1 - pct_test - pct_validation)))
+    if batch_size is None:
+        batch_size = n_train # run non-Stochastic GD
     n_test = int(np.round(n * pct_test))
 
     x_train = x[:n_train]
@@ -39,43 +70,50 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
     y_train = y[:n_train]
     y_test = y[n_train:(n_train + n_test)]
 
-    net.to(device)
-    x_ = x_train.to(device)
-    y_ = y_train.to(device)
+    net.to(device) # todo do we need it?
 
     x_test_ = x_test.to(device)
     y_test_ = y_test.to(device)
 
-    optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
-    loss_func = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+    loss_func = torch.nn.MSELoss()  # Loss/cost function
+    try:
 
-    best_l = y.abs().max().item()
-    checkpoint = {}
-    losses = []
+        best_loss_test = y.abs().max().item()
+        checkpoint = {}
+        losses = []
 
-    for e in range(n_epochs):
-        prediction = net(x_)
-        loss = loss_func(prediction, y_)
+        def record_step(epoch, loss, loss_test):
+            nonlocal best_loss_test, checkpoint
+            if loss_test < best_loss_test:
+                best_loss_test = loss_test
+                checkpoint = {
+                    'n_hidden': net.n_hidden,
+                    'n_layers': net.n_layers,
+                    'model_state_dict': net.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                }
+            losses.append([epoch + 1, loss_test, loss])
 
-        prediction_test = net(x_test_)
-        loss_test = loss_func(prediction_test, y_test_)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        l = loss_test.data.cpu().numpy()
-        if l.item() < best_l:
-            best_l = l.item()
-            checkpoint = {
-                'n_hidden': net.n_hidden,
-                'n_layers': net.n_layers,
-                'model_state_dict': net.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-            }
-        losses.append([e + 1, l.item(), loss.data.cpu().numpy().item()])
-
-    return best_l, checkpoint, pd.DataFrame(losses, columns=['Epoch', 'Loss Test', 'Loss'])
+        # pass whole train set to GPU if it's NOT Stochastic GD
+        if batch_size == n_train:
+            x_ = x_train.to(device)
+            y_ = y_train.to(device)
+            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best test loss: {best_loss_test}'):
+                loss, loss_test = run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer)
+                record_step(epoch, loss, loss_test)
+        else:
+            train_loader = DataLoader(dataset=TensorDataset(x_train, y_train), batch_size=batch_size, shuffle=shuffle,
+                                      pin_memory=True)
+            for epoch in vrange(n_epochs):
+                for batch_ndx, (x_train, y_train) in enumerate(train_loader):
+                    x_ = x_train.to(device)
+                    y_ = y_train.to(device)
+                    loss, loss_test = run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer)
+                    record_step(epoch, loss, loss_test)
+    finally:
+        wipe_memory(optimizer)
+    return best_loss_test, checkpoint, pd.DataFrame(losses, columns=['Epoch', 'Loss Test', 'Loss'])
 
 
 class TorchApproximator:
@@ -95,18 +133,18 @@ class TorchApproximator:
 
     def train(self, states, pvs, n_epochs=6000, pct_test=0.2  # Portion for test set
               , pct_validation=0.1  # Portion for validation set
-              , n_hidden: int = 100, n_layers: int = 4):
-        pvs, states = as_ndarray(pvs), as_ndarray(states)
+              , n_hidden: int = 100, n_layers: int = 4, lr=0.01, batch_size: int = None):
+        self.samples_t = torch.from_numpy(states).float()
+        self.values_t = torch.from_numpy(pvs).float().unsqueeze(dim=1)
         self.pvs = pvs
         np.random.seed(self.seed)
         self.generator = torch.manual_seed(self.seed)
 
         self.pct_validation = pct_validation
-        self.samples_t = torch.from_numpy(states.T).float()
-        self.values_t = torch.from_numpy(pvs).float().unsqueeze(dim=1)
-        n_features = states.shape[0]
+        n_features = states.shape[1]
         net = Net(n_feature=n_features, n_hidden=n_hidden, n_layers=n_layers, n_output=1)  # define the network
-        ls, checkpoint, df = fit_net(net, n_epochs, self.samples_t, self.values_t, pct_test, pct_validation, self.device)
+        ls, checkpoint, df = fit_net(net, n_epochs, self.samples_t, self.values_t, pct_test, pct_validation, lr=lr
+                                     , device=self.device, batch_size=batch_size)
         checkpoint['n_features'] = n_features
         return checkpoint, df
 

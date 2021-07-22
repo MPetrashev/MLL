@@ -1,6 +1,6 @@
 import os
 import traceback
-from typing import List, Union
+from typing import List, Union, Callable
 
 import pandas as pd
 import numpy as np
@@ -111,7 +111,7 @@ def as_ndarray(dataset: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
     return dataset.to_numpy() if isinstance(dataset, (pd.DataFrame,pd.Series)) else dataset
 
 
-def vrange(start, stop=None, step=1):
+def vrange(start, stop=None, step=1, extra_info: Callable[[int], str] = None):
     """
     Verbose version of range() generator which does output % of completion on each iteration
     :param start:
@@ -123,10 +123,11 @@ def vrange(start, stop=None, step=1):
         stop = start
         start = 0
     N = (stop - start) / step
-    for e in range(start, stop, step):
-        yield e
-        completed = int( (e+1) * 100 / N )
-        print(f'{completed:2d}% completed', end='\r', flush=True)
+    for idx in range(start, stop, step):
+        yield idx
+        completed = (idx+1) * 100 / N
+        msg = '' if extra_info is None else '. ' + extra_info(idx)
+        print(f'\r{completed:5.2f}% completed{msg}', end='', flush=True)
 
 
 def venumerate(sequence, start=0):
