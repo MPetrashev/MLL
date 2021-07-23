@@ -24,6 +24,7 @@ class Net(torch.nn.Module):
 
     def forward(self, x):
         for lin in self.linears[:-1]:
+            # MemoryException cause at lin(x) line or F.relu(x)
             x = lin(x)
             x = F.relu(x)              # Activation function for hidden layer
         x = self.linears[-1](x)             # Apply last layer without activation
@@ -56,11 +57,12 @@ def run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer):
     return loss.data.cpu().numpy().item(), loss_test
 
 
+# todo move device to object var
 def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test: float, pct_validation: float, lr=0.01
             , batch_size: int = None, shuffle=False, device: str='cpu'):
 
     n = y.size()[0]
-    n_train = int(np.round(n * (1 - pct_test - pct_validation)))
+    n_train = int(np.round(n * (1 - pct_test - pct_validation))) # todo rename
     if batch_size is None:
         batch_size = n_train # run non-Stochastic GD
     n_test = int(np.round(n * pct_test))
@@ -96,19 +98,21 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
             losses.append([epoch + 1, loss_test, loss])
 
         # pass whole train set to GPU if it's NOT Stochastic GD
+        x_train = x_train.to(device)
+        y_train = y_train.to(device)
         if batch_size == n_train:
-            x_ = x_train.to(device)
-            y_ = y_train.to(device)
             for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best test loss: {best_loss_test}'):
-                loss, loss_test = run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer)
+                loss, loss_test = run_batch(net, x_train, y_train, x_test_, y_test_, loss_func, optimizer)
                 record_step(epoch, loss, loss_test)
         else:
-            train_loader = DataLoader(dataset=TensorDataset(x_train, y_train), batch_size=batch_size, shuffle=shuffle,
-                                      pin_memory=True)
-            for epoch in vrange(n_epochs):
-                for batch_ndx, (x_train, y_train) in enumerate(train_loader):
-                    x_ = x_train.to(device)
-                    y_ = y_train.to(device)
+            if n_train % batch_size != 0:
+                raise ValueError(f"Sorry, we don't support non-integer number of batches at this moment: "
+                                 f"{n_train}(Number of samples) % {batch_size}(Batch size) should be zero")
+            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best test loss: {best_loss_test}'):
+                for batch_ndx in range(int(n_train / batch_size)):
+                    offset = batch_ndx * batch_size
+                    x_ = x_train[offset:offset+batch_size, :]
+                    y_ = y_train[offset:offset+batch_size]
                     loss, loss_test = run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer)
                     record_step(epoch, loss, loss_test)
     finally:
@@ -134,7 +138,7 @@ class TorchApproximator:
     def train(self, states, pvs, n_epochs=6000, pct_test=0.2  # Portion for test set
               , pct_validation=0.1  # Portion for validation set
               , n_hidden: int = 100, n_layers: int = 4, lr=0.01, batch_size: int = None):
-        self.samples_t = torch.from_numpy(states).float()
+        self.samples_t = torch.from_numpy(states).float() #todo rename samples and values to x and y
         self.values_t = torch.from_numpy(pvs).float().unsqueeze(dim=1)
         self.pvs = pvs
         np.random.seed(self.seed)
