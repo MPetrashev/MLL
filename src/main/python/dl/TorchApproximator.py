@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 import gc
-from torch.utils.data import DataLoader, TensorDataset
 
 from utils import as_ndarray, vrange
 
@@ -52,7 +51,7 @@ def run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer):
     loss_test = loss_func(prediction_test, y_test_).data.cpu().numpy().item()
 
     optimizer.zero_grad()
-    loss.backward()
+    loss.backward() # MemoryException can arrise here as well
     optimizer.step()
     return loss.data.cpu().numpy().item(), loss_test
 
@@ -98,21 +97,21 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
             losses.append([epoch + 1, loss_test, loss])
 
         # pass whole train set to GPU if it's NOT Stochastic GD
-        x_train = x_train.to(device)
-        y_train = y_train.to(device)
         if batch_size == n_train:
-            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best test loss: {best_loss_test}'):
+            x_train = x_train.to(device)
+            y_train = y_train.to(device)
+            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_loss_test}'):
                 loss, loss_test = run_batch(net, x_train, y_train, x_test_, y_test_, loss_func, optimizer)
                 record_step(epoch, loss, loss_test)
         else:
             if n_train % batch_size != 0:
                 raise ValueError(f"Sorry, we don't support non-integer number of batches at this moment: "
                                  f"{n_train}(Number of samples) % {batch_size}(Batch size) should be zero")
-            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best test loss: {best_loss_test}'):
+            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_loss_test}'):
                 for batch_ndx in range(int(n_train / batch_size)):
                     offset = batch_ndx * batch_size
-                    x_ = x_train[offset:offset+batch_size, :]
-                    y_ = y_train[offset:offset+batch_size]
+                    x_ = x_train[offset:offset+batch_size, :].to(device)
+                    y_ = y_train[offset:offset+batch_size].to(device)
                     loss, loss_test = run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer)
                     record_step(epoch, loss, loss_test)
     finally:
@@ -147,10 +146,10 @@ class TorchApproximator:
         self.pct_validation = pct_validation
         n_features = states.shape[1]
         net = Net(n_feature=n_features, n_hidden=n_hidden, n_layers=n_layers, n_output=1)  # define the network
-        ls, checkpoint, df = fit_net(net, n_epochs, self.samples_t, self.values_t, pct_test, pct_validation, lr=lr
+        best_loss_test, checkpoint, df = fit_net(net, n_epochs, self.samples_t, self.values_t, pct_test, pct_validation, lr=lr
                                      , device=self.device, batch_size=batch_size)
         checkpoint['n_features'] = n_features
-        return checkpoint, df
+        return checkpoint, df, best_loss_test
 
     def load_model(self, checkpoint):
         model = Net(n_feature=checkpoint['n_features'],
