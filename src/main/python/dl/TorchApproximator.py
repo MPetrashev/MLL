@@ -1,13 +1,29 @@
 import logging
+import math
+import sys
+
 import torch
 import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 import gc
 
-from utils import as_ndarray, vrange
+from utils import vrange
 
 logger = logging.getLogger(__file__)
+
+
+def DataLoader(x, y, batch_size=None):
+    """
+    This is a patch generator to torch.utils.data import DataLoader which is VERY slow on 1st iteration
+    """
+    if batch_size is None:
+        yield x, y
+    else:
+        n_batches = math.ceil(len(y) / batch_size)
+        for batch_ndx in range(n_batches):
+            offset = batch_ndx * batch_size
+            yield x[offset:offset+batch_size, :], y[offset:offset+batch_size]
 
 
 class Net(torch.nn.Module):
@@ -30,28 +46,57 @@ class Net(torch.nn.Module):
         return x
 
 
-def wipe_memory(optimizer):
+# Example taken from here: https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/27
+def optimizer_to(optimizer, device):
+    for param in optimizer.state.values():
+        # Not sure there are any global tensors in the state dict
+        if isinstance(param, torch.Tensor):
+            param.data = param.data.to(device)
+            if param._grad is not None:
+                param._grad.data = param._grad.data.to(device)
+        elif isinstance(param, dict):
+            for subparam in param.values():
+                if isinstance(subparam, torch.Tensor):
+                    subparam.data = subparam.data.to(device)
+                    if subparam._grad is not None:
+                        subparam._grad.data = subparam._grad.data.to(device)
+
+
+def gpu_memory_info():
     """
-    Example taken from here: https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/27
-    todo: but didn't use
-        def _optimizer_to(self, device)
-    as soon as it works without this method yet. But needs to wait some time. May be 30 secs
+    https://stackoverflow.com/questions/58216000/get-total-amount-of-free-gpu-memory-and-available-using-pytorch
     :return:
     """
+    total = torch.cuda.get_device_properties(0).total_memory
+    reserved = torch.cuda.memory_reserved(0)
+    allocated = torch.cuda.memory_allocated(0)
+    return {
+        'Free': reserved - allocated,
+        'Total': total,
+        'Reserved': reserved,
+        'Allocated': allocated
+    }
+
+
+def wipe_memory():
     gc.collect()
     torch.cuda.empty_cache()
     logger.info(f'GPU cache is cleared')
 
 
-def run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer):
+def run_batch(net, x_, y_, x_test, y_test, loss_func, optimizer, test_batch_size=None, device='cpu'):
     prediction = net(x_)
     loss = loss_func(prediction, y_)
 
-    prediction_test = net(x_test_)
-    loss_test = loss_func(prediction_test, y_test_).data.cpu().numpy().item()
+    loss_test = sys.float_info.max
+    for x_test_batch, y_test_batch in DataLoader(x_test, y_test, batch_size=test_batch_size):
+        prediction_test = net(x_test_batch.to(device))
+        loss_test_ = loss_func(prediction_test, y_test_batch.to(device)).data.cpu().numpy().item()
+        if loss_test_ < loss_test:
+            loss_test = loss_test_
 
     optimizer.zero_grad()
-    loss.backward() # MemoryException can arrise here as well
+    loss.backward()  # MemoryException can arise here as well
     optimizer.step()
     return loss.data.cpu().numpy().item(), loss_test
 
@@ -60,25 +105,22 @@ def run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer):
 def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test: float, pct_validation: float, lr=0.01
             , batch_size: int = None, shuffle=False, device: str='cpu'):
 
-    n = y.size()[0]
+    n = len( y ) #.size()[0]
     n_train = int(np.round(n * (1 - pct_test - pct_validation))) # todo rename
-    if batch_size is None:
-        batch_size = n_train # run non-Stochastic GD
     n_test = int(np.round(n * pct_test))
+
 
     x_train = x[:n_train]
     x_test = x[n_train:(n_train + n_test)]
     y_train = y[:n_train]
     y_test = y[n_train:(n_train + n_test)]
 
-    net.to(device) # todo do we need it?
 
-    x_test_ = x_test.to(device)
-    y_test_ = y_test.to(device)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     loss_func = torch.nn.MSELoss()  # Loss/cost function
     try:
+        net.to(device)  # todo do we need it?
 
         best_loss_test = y.abs().max().item()
         checkpoint = {}
@@ -92,30 +134,24 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
                     'n_hidden': net.n_hidden,
                     'n_layers': net.n_layers,
                     'model_state_dict': net.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
+                    # 'optimizer_state_dict': optimizer.state_dict(),
                 }
             losses.append([epoch + 1, loss_test, loss])
 
-        # pass whole train set to GPU if it's NOT Stochastic GD
-        if batch_size == n_train:
-            x_train = x_train.to(device)
-            y_train = y_train.to(device)
-            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_loss_test}'):
-                loss, loss_test = run_batch(net, x_train, y_train, x_test_, y_test_, loss_func, optimizer)
+        for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_loss_test}'):
+            for x_batch, y_batch in DataLoader(x_train, y_train, batch_size=batch_size):
+                loss, loss_test = run_batch(net, x_batch.to(device), y_batch.to(device), x_test, y_test, loss_func
+                            , optimizer, device=device
+                            , test_batch_size=math.ceil( batch_size * n_test / n_train ) if batch_size else None)
                 record_step(epoch, loss, loss_test)
-        else:
-            if n_train % batch_size != 0:
-                raise ValueError(f"Sorry, we don't support non-integer number of batches at this moment: "
-                                 f"{n_train}(Number of samples) % {batch_size}(Batch size) should be zero")
-            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_loss_test}'):
-                for batch_ndx in range(int(n_train / batch_size)):
-                    offset = batch_ndx * batch_size
-                    x_ = x_train[offset:offset+batch_size, :].to(device)
-                    y_ = y_train[offset:offset+batch_size].to(device)
-                    loss, loss_test = run_batch(net, x_, y_, x_test_, y_test_, loss_func, optimizer)
-                    record_step(epoch, loss, loss_test)
     finally:
-        wipe_memory(optimizer)
+        optimizer_to(optimizer, torch.device('cpu'))
+        del optimizer
+        net.to('cpu')
+        if 'model_state_dict' in checkpoint:
+            checkpoint['model_state_dict'] = { k : v.to('cpu') for k, v in checkpoint['model_state_dict'].items()} # does fix memory leaking problem: gpu_memory_info()['Allocated'] wouldn't 0
+        # wipe_memory()
+
     return best_loss_test, checkpoint, pd.DataFrame(losses, columns=['Epoch', 'Loss Test', 'Loss'])
 
 
@@ -125,7 +161,7 @@ class TorchApproximator:
         super().__init__()
         if device is None:
             if torch.cuda.is_available():
-                device = 'cuda:0'
+                device = 'cuda'
                 logger.info(f'GPU detected. Running on {device}')
             else:
                 device = 'cpu'
@@ -162,7 +198,7 @@ class TorchApproximator:
         return model
 
     def validation_set(self, model):
-        n = self.values_t.size()[0]
+        n = len( self.values_t ) #.size()[0]
         ind_validation = int(np.round(n * (1 - self.pct_validation)))
         samples_validation = self.samples_t[ind_validation:].to(self.device)
         approximation = model(samples_validation).flatten().data.cpu().numpy()  # approximated PVs

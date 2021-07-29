@@ -28,6 +28,9 @@ To use __yfinance__:
 conda create --name tf_cluster_test python=3.7.9 numpy=1.19.2 tensorflow==2.1.0 pandas=1.1.3
 activate tf_cluster_test
 ```
+## GPU Memory exception
+
+* Kill `dwm` process (usually it takes most Dedicated GPU memory: see Task Manager | Details tab) 
 
 ## AutoML
 ```
