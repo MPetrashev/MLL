@@ -59,18 +59,14 @@ class ApproximatorTest(TestCase):
         self.assert_frame_equal(self.put_prices_100K, df)
 
     def test_torch_put_BS_example(self):
-
         # Original time to execute: 2m 29s
         np.random.seed(seed)
         torch.manual_seed(seed)
 
         df = self.put_prices_100K
 
-        # approximator, history, best_loss_test = run_scenario()
         approximator = TorchApproximator()
         checkpoint, history, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=n_epochs, n_hidden=100)
-        # checkpoint, history, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=25, n_hidden=100)
-        # checkpoint, history, best_loss_test = run_training(df)
         self.assert_frame_equal('torch_steps.csv', history, compare_just_head=True)
 
         model = approximator.load_model(checkpoint)

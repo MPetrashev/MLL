@@ -22,9 +22,9 @@ class TestCase(unittest.TestCase):
         class_dir = os.path.dirname(inspect.getfile(relative_cls)) if relative_cls else self.test_class_dir
         return os.path.join(class_dir, file_name)
 
-    def get_test_data(self, file_name, index_col: str = None):
+    def get_test_data(self, file_name, index_col: str = None, nrows=None):
         file = self.absolute(file_name)
-        return pd.read_csv(file, na_filter=False, parse_dates=True, index_col=index_col)
+        return pd.read_csv(file, na_filter=False, parse_dates=True, index_col=index_col, nrows=nrows)
 
     def assert_frame_equal(self, expected_df: Union[str, pd.DataFrame], actual_df: pd.DataFrame
                            , compare_just_head: bool = False):

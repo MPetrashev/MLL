@@ -2,7 +2,7 @@ import sys
 import logging
 logger = logging.getLogger(__file__)
 
-has_gpu = False
+has_gpu = True
 
 if has_gpu:
     import tensorflow as tf
@@ -16,7 +16,7 @@ else:
     logger.info('There is no GPU on your machine')
 
 from dl.TorchApproximator import TorchApproximator
-# from dl.TFApproximator import TFApproximator
+from dl.TFApproximator import TFApproximator
 # from dl.PlotlyCallback import plotly_callback
 
 
