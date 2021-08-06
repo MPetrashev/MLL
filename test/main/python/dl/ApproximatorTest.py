@@ -8,7 +8,7 @@ import torch
 from dl import TorchApproximator, TFApproximator
 from scipy.stats import norm
 
-from dl.TorchApproximator import gpu_memory_info
+from dl.cuda import gpu_memory_info
 from utils import bps, lazy_property
 
 
@@ -66,7 +66,7 @@ class ApproximatorTest(TestCase):
         df = self.put_prices_100K
 
         approximator = TorchApproximator()
-        checkpoint, history, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=n_epochs, n_hidden=100)
+        checkpoint, history, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=n_epochs, n_hiddens=100)
         self.assert_frame_equal('torch_steps.csv', history, compare_just_head=True)
 
         model = approximator.load_model(checkpoint)
@@ -85,12 +85,12 @@ class ApproximatorTest(TestCase):
         approximator = TorchApproximator()
 
         # check GD
-        checkpoint, history1, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=30, n_hidden=100)
+        checkpoint, history1, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=30, n_hiddens=100)
         self.assertEqual(0, gpu_memory_info()['Allocated'])
         self.assertIsNotNone(checkpoint)  # Was a cause of leaking GPU memory because of 'model_state_dict' value.
 
         # check SGD
-        checkpoint, history2, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=30, n_hidden=100, batch_size=175000)
+        checkpoint, history2, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=30, n_hiddens=100, batch_size=175000)
         self.assertEqual(0, gpu_memory_info()['Allocated'])
         self.assertIsNotNone(checkpoint)  # Was a cause of leaking GPU memory because of 'model_state_dict' value.
 

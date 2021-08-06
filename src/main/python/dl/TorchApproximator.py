@@ -4,101 +4,22 @@ import sys
 from typing import Callable
 
 import torch
-import torch.nn.functional as F
 import numpy as np
 import pandas as pd
-import gc
 
-from utils import vrange
+from dl.DataLoader import DataLoader
+from dl.Net import Net
+from dl.cuda import optimizer_to
+from utils import vrange, less_than_1pc_exceeds_1pc_diff
 
 logger = logging.getLogger(__file__)
 # todo change data.cpu().numpy().item() on item()
 
 
-def DataLoader(x, y, batch_size=None):
-    """
-    This is a patch generator to torch.utils.data import DataLoader which is VERY slow on 1st iteration
-    """
-    if batch_size is None:
-        yield x, y
-    else:
-        n_batches = math.ceil(len(y) / batch_size)
-        for batch_ndx in range(n_batches):
-            offset = batch_ndx * batch_size
-            yield x[offset:offset+batch_size, :], y[offset:offset+batch_size]
-
-
-class Net(torch.nn.Module):
-    def __init__(self, n_features: int, n_hiddens:int, n_layers:int, n_outputs: int, output_layer_bias_shift: int = None):
-        """
-        :param n_features:
-        :param n_hiddens:
-        :param n_layers:
-        :param n_outputs:
-        :param output_layer_bias_shift: Controls initial bias for output layer. User can set it to the mean of training
-        PVs to speed up the convergence.
-        """
-        super(Net, self).__init__()
-
-        self.n_hidden = n_hiddens
-        self.n_layers = n_layers
-
-        self.linears = torch.nn.ModuleList([torch.nn.Linear(n_features, n_hiddens)])
-        self.linears.extend([torch.nn.Linear(n_hiddens, n_hiddens) for i in range(1, n_layers)])
-        self.linears.append(torch.nn.Linear(n_hiddens, n_outputs))
-
-        if output_layer_bias_shift:
-            for layer in self.linears[-1:]:
-                layer.bias.data = torch.add(layer.bias.data, output_layer_bias_shift)
-
-    def forward(self, x):
-        for lin in self.linears[:-1]:
-            # MemoryException cause at lin(x) line or F.relu(x)
-            x = lin(x)
-            x = F.relu(x)              # Activation function for hidden layer
-        x = self.linears[-1](x)             # Apply last layer without activation
-        return x
-
-
 # Example taken from here: https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/27
-def optimizer_to(optimizer, device):
-    for param in optimizer.state.values():
-        # Not sure there are any global tensors in the state dict
-        if isinstance(param, torch.Tensor):
-            param.data = param.data.to(device)
-            if param._grad is not None:
-                param._grad.data = param._grad.data.to(device)
-        elif isinstance(param, dict):
-            for subparam in param.values():
-                if isinstance(subparam, torch.Tensor):
-                    subparam.data = subparam.data.to(device)
-                    if subparam._grad is not None:
-                        subparam._grad.data = subparam._grad.data.to(device)
 
 
-def gpu_memory_info():
-    """
-    https://stackoverflow.com/questions/58216000/get-total-amount-of-free-gpu-memory-and-available-using-pytorch
-    :return:
-    """
-    total = torch.cuda.get_device_properties(0).total_memory
-    reserved = torch.cuda.memory_reserved(0)
-    allocated = torch.cuda.memory_allocated(0)
-    return {
-        'Free': reserved - allocated,
-        'Total': total,
-        'Reserved': reserved,
-        'Allocated': allocated
-    }
-
-
-def wipe_memory():
-    gc.collect()
-    torch.cuda.empty_cache()
-    logger.info(f'GPU cache is cleared')
-
-
-def run_batch(net, x_, y_, x_test, y_test, loss_func, optimizer, test_batch_size=None, device='cpu'
+def run_batch(net: Net, x_, y_, x_test, y_test, loss_func, optimizer, test_batch_size=None, device='cpu'
               , stop_condition: Callable = None):
     prediction = net(x_)
     loss = loss_func(prediction, y_)
@@ -120,19 +41,11 @@ def run_batch(net, x_, y_, x_test, y_test, loss_func, optimizer, test_batch_size
     return loss.data.cpu().numpy().item(), loss_test, stop_condition and stop_condition(y_test, prediction_test)
 
 
-def less_than_1pc_exceeds_1pc_diff(y, y_prediction):
-    y = y.squeeze()
-    y_prediction = y_prediction.detach().cpu().numpy().squeeze()
-    arr = np.isclose(y, y_prediction, rtol=0.01) # remove y.squeeze() and reuse original array
-    n = np.count_nonzero(arr)
-    return n / y.shape[0] > 0.99
-
-
 # todo move device to object var
 def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test: float, pct_validation: float,
             loss_func : Callable, lr=0.01, batch_size: int = None, shuffle=False, device: str='cpu', stop_condition: Callable = None):
 
-    n = len( y ) #.size()[0]
+    n = y.shape[0]
     n_train = int(np.round(n * (1 - pct_test - pct_validation))) # todo rename
     n_test = int(np.round(n * pct_test))
 
@@ -143,6 +56,10 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
     y_test = y[n_train:(n_train + n_test)]
 
 
+    # todo check SGD+Nesterov optimizer About SGD+Nesterov: https://medium.com/@Biboswan98/optim-adam-vs-optim-sgd-lets-dive-in-8dbf1890fbdc
+    # Correct value of momentum is obtained by cross validation and would avoid getting stuck in a local minima.
+    # In fact it is said that SGD+Nesterov can be as good as Adam’s technique.
+    # optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, dampening=dampening, nesterov=nesterov)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     best_loss_test = y.abs().max().item()
@@ -157,7 +74,7 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
             if loss_test < best_loss_test:
                 best_loss_test = loss_test
                 checkpoint = {
-                    'n_hidden': net.n_hidden,
+                    'n_hiddens': net.n_hiddens,
                     'n_layers': net.n_layers,
                     'model_state_dict': net.state_dict(),
                     # 'optimizer_state_dict': optimizer.state_dict(),
@@ -225,7 +142,7 @@ class TorchApproximator:
 
     def load_model(self, checkpoint):
         model = Net(n_features=checkpoint['n_features'],
-                    n_hiddens=checkpoint['n_hidden'],
+                    n_hiddens=checkpoint['n_hiddens'],
                     n_layers=checkpoint['n_layers'],
                     n_outputs=1)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -234,7 +151,7 @@ class TorchApproximator:
         return model
 
     def validation_set(self, model):
-        n = len(self.values_t)
+        n = self.values_t.shape[0]
         ind_validation = int(np.round(n * (1 - self.pct_validation)))
         samples_validation = self.samples_t[ind_validation:].to(self.device)
         approximation = model(samples_validation).flatten().data.cpu().numpy()  # approximated PVs

@@ -92,7 +92,7 @@ def matrix_to_df(data: List[List[float]], columns=None, pattern='Scenario {}', t
     return result
 
 
-def bps(a, b):
+def bps(a, b): #todo remove it
     """
     :param a:
     :param b:
@@ -143,3 +143,11 @@ def venumerate(sequence, start=0):
         yield e
         completed = int( (e+1) * 100 / N )
         print(f'{completed:2d}% completed', end='\r', flush=True)
+
+
+def less_than_1pc_exceeds_1pc_diff(y, y_prediction):
+    y = y.squeeze()
+    y_prediction = y_prediction.detach().cpu().numpy().squeeze()
+    arr = np.isclose(y, y_prediction, rtol=0.01) # remove y.squeeze() and reuse original array
+    n = np.count_nonzero(arr)
+    return n / y.shape[0] > 0.99
