@@ -31,10 +31,10 @@ def DataLoader(x, y, batch_size=None):
 class Net(torch.nn.Module):
     def __init__(self, n_features: int, n_hiddens:int, n_layers:int, n_outputs: int, output_layer_bias_shift: int = None):
         """
-        :param n_features: 
-        :param n_hiddens: 
-        :param n_layers: 
-        :param n_outputs: 
+        :param n_features:
+        :param n_hiddens:
+        :param n_layers:
+        :param n_outputs:
         :param output_layer_bias_shift: Controls initial bias for output layer. User can set it to the mean of training
         PVs to speed up the convergence.
         """
@@ -98,9 +98,14 @@ def wipe_memory():
     logger.info(f'GPU cache is cleared')
 
 
-def run_batch(net, x_, y_, x_test, y_test, loss_func, optimizer, test_batch_size=None, device='cpu'):
+def run_batch(net, x_, y_, x_test, y_test, loss_func, optimizer, test_batch_size=None, device='cpu'
+              , stop_condition: Callable = None):
     prediction = net(x_)
     loss = loss_func(prediction, y_)
+
+    if test_batch_size:
+        raise ValueError(
+            'loss_test accumulates incorrectly. Must be reimplemented: \sum_1^100 (x-x\')^2 break on N subsets')
 
     loss_test = sys.float_info.max
     for x_test_batch, y_test_batch in DataLoader(x_test, y_test, batch_size=test_batch_size):
@@ -112,12 +117,20 @@ def run_batch(net, x_, y_, x_test, y_test, loss_func, optimizer, test_batch_size
     optimizer.zero_grad()
     loss.backward()  # MemoryException can arise here as well
     optimizer.step()
-    return loss.data.cpu().numpy().item(), loss_test
+    return loss.data.cpu().numpy().item(), loss_test, stop_condition and stop_condition(y_test, prediction_test)
+
+
+def less_than_1pc_exceeds_1pc_diff(y, y_prediction):
+    y = y.squeeze()
+    y_prediction = y_prediction.detach().cpu().numpy().squeeze()
+    arr = np.isclose(y, y_prediction, rtol=0.01) # remove y.squeeze() and reuse original array
+    n = np.count_nonzero(arr)
+    return n / y.shape[0] > 0.99
 
 
 # todo move device to object var
 def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test: float, pct_validation: float,
-            loss_func : Callable, lr=0.01, batch_size: int = None, shuffle=False, device: str='cpu'):
+            loss_func : Callable, lr=0.01, batch_size: int = None, shuffle=False, device: str='cpu', stop_condition: Callable = None):
 
     n = len( y ) #.size()[0]
     n_train = int(np.round(n * (1 - pct_test - pct_validation))) # todo rename
@@ -132,12 +145,12 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
 
 
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+    best_loss_test = y.abs().max().item()
+    checkpoint = {}
+    losses = []
+    epoch = -1
     try:
         net.to(device)  # todo do we need it?
-
-        best_loss_test = y.abs().max().item()
-        checkpoint = {}
-        losses = []
 
         def record_step(epoch, loss, loss_test):
             nonlocal best_loss_test, checkpoint
@@ -151,21 +164,27 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
                 }
             losses.append([epoch + 1, loss_test, loss])
 
+        stop = False
         for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_loss_test}'):
             for x_batch, y_batch in DataLoader(x_train, y_train, batch_size=batch_size):
-                loss, loss_test = run_batch(net, x_batch.to(device), y_batch.to(device), x_test, y_test, loss_func
-                            , optimizer, device=device
+                loss, loss_test, stop = run_batch(net, x_batch.to(device), y_batch.to(device), x_test, y_test, loss_func
+                            , optimizer, device=device, stop_condition=stop_condition
                             , test_batch_size=math.ceil( batch_size * n_test / n_train ) if batch_size else None)
                 record_step(epoch, loss, loss_test)
+                if stop:
+                    break
+            if stop:    # todo not ideal double stop from inner for but there is no better way to do it
+                break
     finally:
         optimizer_to(optimizer, torch.device('cpu'))
         del optimizer
         net.to('cpu')
         if 'model_state_dict' in checkpoint:
-            checkpoint['model_state_dict'] = { k : v.to('cpu') for k, v in checkpoint['model_state_dict'].items()} # does fix memory leaking problem: gpu_memory_info()['Allocated'] wouldn't 0
+            # does fix memory leaking problem: gpu_memory_info()['Allocated'] wouldn't 0
+            checkpoint['model_state_dict'] = { k : v.to('cpu') for k, v in checkpoint['model_state_dict'].items()}
         # wipe_memory()
 
-    return best_loss_test, checkpoint, pd.DataFrame(losses, columns=['Epoch', 'Loss Test', 'Loss'])
+    return best_loss_test, checkpoint, epoch, pd.DataFrame(losses, columns=['Epoch', 'Loss Test', 'Loss'])
 
 
 class TorchApproximator:
@@ -186,7 +205,9 @@ class TorchApproximator:
 
     def train(self, states, pvs, n_epochs=6000, pct_test=0.2  # Portion for test set
               , pct_validation=0.1  # Portion for validation set
-              , n_hiddens: int = 100, n_layers: int = 4, lr=0.01, batch_size: int = None):
+              , n_hiddens: int = 100, n_layers: int = 4, lr=0.01, batch_size: int = None
+              , stop_condition: Callable = less_than_1pc_exceeds_1pc_diff):
+        # todo self.values_t would contain [[pv_0], [pv_1],...] instead if [pv_0, pv_1,...] Simplify it
         self.samples_t = torch.from_numpy(states).float() #todo rename samples and values to x and y
         self.values_t = torch.from_numpy(pvs).float().unsqueeze(dim=1)
         self.pvs = pvs
@@ -196,10 +217,11 @@ class TorchApproximator:
         self.pct_validation = pct_validation
         n_features = states.shape[1]
         net = Net(n_features=n_features, n_hiddens=n_hiddens, n_layers=n_layers, n_outputs=1)  # define the network
-        best_loss_test, checkpoint, df = fit_net(net, n_epochs, self.samples_t, self.values_t, pct_test, pct_validation,
-                                    self.loss_func, lr=lr, device=self.device, batch_size=batch_size)
+        best_loss_test, checkpoint, epoch, df = fit_net(net, n_epochs, self.samples_t, self.values_t, pct_test
+                    , pct_validation, self.loss_func, lr=lr, device=self.device, batch_size=batch_size
+                    , stop_condition=stop_condition)
         checkpoint['n_features'] = n_features
-        return checkpoint, df, best_loss_test
+        return checkpoint, df, best_loss_test, epoch  # todo sync order of returned vars with fit_net
 
     def load_model(self, checkpoint):
         model = Net(n_features=checkpoint['n_features'],
