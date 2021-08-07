@@ -1,7 +1,8 @@
 import logging
 import math
 import sys
-from typing import Callable
+from collections import namedtuple
+from typing import Callable, Dict
 
 import torch
 import numpy as np
@@ -14,6 +15,10 @@ from utils import vrange, less_than_1pc_exceeds_1pc_diff
 
 logger = logging.getLogger(__file__)
 # todo change data.cpu().numpy().item() on item()
+
+
+Checkpoint = namedtuple('Checkpoint', ['n_features', 'n_layers', 'n_hiddens', 'n_outputs', 'model_state_dict']
+                        , defaults=(None, None, None, 1, {}))
 
 
 # Example taken from here: https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/27
@@ -63,7 +68,8 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
 
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     best_loss_test = y.abs().max().item()
-    checkpoint = {}
+
+    checkpoint = Checkpoint(net.n_features, net.n_layers, net.n_hiddens, 1)
     losses = []
     epoch = -1
     try:
@@ -73,12 +79,8 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
             nonlocal best_loss_test, checkpoint
             if loss_test < best_loss_test:
                 best_loss_test = loss_test
-                checkpoint = {
-                    'n_hiddens': net.n_hiddens,
-                    'n_layers': net.n_layers,
-                    'model_state_dict': net.state_dict(),
-                    # 'optimizer_state_dict': optimizer.state_dict(),
-                }
+                checkpoint = checkpoint._replace(n_layers=net.n_layers, n_hiddens=net.n_hiddens,
+                                                 model_state_dict=net.state_dict())
             losses.append([epoch + 1, loss_test, loss])
 
         stop = False
@@ -96,9 +98,9 @@ def fit_net(net: Net, n_epochs: int, x: torch.tensor, y: torch.tensor, pct_test:
         optimizer_to(optimizer, torch.device('cpu'))
         del optimizer
         net.to('cpu')
-        if 'model_state_dict' in checkpoint:
+        if checkpoint.model_state_dict:
             # does fix memory leaking problem: gpu_memory_info()['Allocated'] wouldn't 0
-            checkpoint['model_state_dict'] = { k : v.to('cpu') for k, v in checkpoint['model_state_dict'].items()}
+            checkpoint._replace(model_state_dict={k: v.to('cpu') for k, v in checkpoint.model_state_dict.items()})
         # wipe_memory()
 
     return best_loss_test, checkpoint, epoch, pd.DataFrame(losses, columns=['Epoch', 'Loss Test', 'Loss'])
@@ -137,15 +139,10 @@ class TorchApproximator:
         best_loss_test, checkpoint, epoch, df = fit_net(net, n_epochs, self.samples_t, self.values_t, pct_test
                     , pct_validation, self.loss_func, lr=lr, device=self.device, batch_size=batch_size
                     , stop_condition=stop_condition)
-        checkpoint['n_features'] = n_features
         return checkpoint, df, best_loss_test, epoch  # todo sync order of returned vars with fit_net
 
-    def load_model(self, checkpoint):
-        model = Net(n_features=checkpoint['n_features'],
-                    n_hiddens=checkpoint['n_hiddens'],
-                    n_layers=checkpoint['n_layers'],
-                    n_outputs=1)
-        model.load_state_dict(checkpoint['model_state_dict'])
+    def load_model(self, checkpoint: Checkpoint):
+        model = Net(**checkpoint._asdict())
         model.eval()
         model.to(self.device)
         return model
