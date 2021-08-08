@@ -1,5 +1,4 @@
 import logging
-import math
 import sys
 from collections import namedtuple
 from typing import Callable, Dict
@@ -78,7 +77,7 @@ def fit_net(net: Net, n_epochs: int, x: torch.Tensor, y: torch.Tensor, pct_test:
             losses.append([epoch + 1, loss_test, loss])
 
         stop = False
-        for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_loss_test}'):
+        for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_loss_test:.7f}'):
             for x_batch, y_batch in DataLoader(x_train, y_train, batch_size=batch_size):
                 loss, loss_test, stop = run_batch(net, x_batch.to(device), y_batch.to(device), x_test, y_test, loss_func
                             , optimizer, device=device, stop_condition=stop_condition)
@@ -120,7 +119,7 @@ class TorchApproximator:
               , n_hiddens: int = 100, n_layers: int = 4, lr: float = 0.01, batch_size: int = None
               , stop_condition: Callable = less_than_1pc_exceeds_1pc_diff):
         # todo self.values_t would contain [[pv_0], [pv_1],...] instead if [pv_0, pv_1,...] Simplify it
-        self.samples_t = torch.from_numpy(states).float() #todo rename samples and values to x and y
+        self.samples_t = torch.from_numpy(states).float()  # todo rename samples and values to x and y
         self.values_t = torch.from_numpy(pvs).float().unsqueeze(dim=1)
         self.pvs = pvs
         np.random.seed(self.seed)

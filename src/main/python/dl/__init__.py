@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 logger = logging.getLogger(__file__)
 
 has_gpu = True
@@ -17,3 +18,8 @@ else:
 from dl.TorchApproximator import TorchApproximator
 from dl.TFApproximator import TFApproximator
 # from dl.PlotlyCallback import plotly_callback
+
+
+def shift_pvs(pvs: np.ndarray, expected_min: float = 100.) -> np.ndarray:
+    shift = expected_min - pvs.min()
+    return pvs + shift

@@ -92,17 +92,6 @@ def matrix_to_df(data: List[List[float]], columns=None, pattern='Scenario {}', t
     return result
 
 
-def bps(a, b): #todo remove it
-    """
-    :param a:
-    :param b:
-    :return: Relative difference in bps between a and b. If abs(a) < 1 the absolute difference in bps is returned
-    """
-    diff = abs(b - a)
-    a = abs(a)
-    return int(diff / a * 10000 if a > 100 else diff * 100)
-
-
 def as_ndarray(dataset: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
     """
     :param dataset:
@@ -148,6 +137,13 @@ def venumerate(sequence, start=0):
 def less_than_1pc_exceeds_1pc_diff(y, y_prediction):
     y = y.squeeze()
     y_prediction = y_prediction.detach().cpu().numpy().squeeze()
-    arr = np.isclose(y, y_prediction, rtol=0.01) # remove y.squeeze() and reuse original array
+    arr = np.isclose(y, y_prediction, rtol=0.001) # 10bps remove y.squeeze() and reuse original array
     n = np.count_nonzero(arr)
     return n / y.shape[0] > 0.99
+
+# def less_than_1pc_exceeds_1pc_diff(y, y_prediction):
+#     y = y.squeeze() + 100.
+#     y_prediction = y_prediction.detach().cpu().numpy().squeeze() + 100.
+#     arr = np.isclose(y, y_prediction, rtol=0.001) # 10bps remove y.squeeze() and reuse original array
+#     n = np.count_nonzero(arr)
+#     return n / y.shape[0] > 0.99

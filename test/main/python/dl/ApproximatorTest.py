@@ -5,11 +5,11 @@ import numpy as np
 import pandas as pd
 import torch
 
-from dl import TorchApproximator, TFApproximator
+from dl import TorchApproximator, TFApproximator, shift_pvs
 from scipy.stats import norm
 
 from dl.cuda import gpu_memory_info
-from utils import bps, lazy_property
+from utils import lazy_property
 
 
 def ds(K, S, T, vol, r, q):
@@ -66,15 +66,23 @@ class ApproximatorTest(TestCase):
         df = self.put_prices_100K
 
         approximator = TorchApproximator()
-        checkpoint, history, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=n_epochs, n_hiddens=100)
+        checkpoint, history, best_loss_test, epoch = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=n_epochs, n_hiddens=100)
         self.assert_frame_equal('torch_steps.csv', history, compare_just_head=True)
 
         model = approximator.load_model(checkpoint)
         original, approximation = approximator.validation_set(model)
-        self.assertLess(max(np.vectorize(bps)(original, approximation)), 80)
-        error = approximation-original
-        self.assertEqual(np.mean(error), 0.0042583657125902195) # abs((error).mean()) deviation is closed to 0
-        self.assertEqual(np.std(error), 0.0905587802924326) # math.sqrt( ((approximation-original)**2).mean() ) mse is small
+        loss = approximator.loss_func(torch.from_numpy(approximation).float().unsqueeze(dim=1)
+                                        , torch.from_numpy(original).float().unsqueeze(dim=1)).item()
+        self.assertEqual(loss, 0.008219026029109955)
+
+        # Check shifted PVs approximation
+        pvs = shift_pvs( df.PV.values )
+        checkpoint, history, best_loss_test, epoch = approximator.train(df.iloc[:, df.columns != 'PV'].values, pvs, n_epochs=n_epochs, n_hiddens=100)
+        model = approximator.load_model(checkpoint)
+        original, approximation = approximator.validation_set(model)
+        loss = approximator.loss_func(torch.from_numpy(approximation).float().unsqueeze(dim=1)
+                                        , torch.from_numpy(original).float().unsqueeze(dim=1)).item()
+        self.assertEqual(loss, 0.14928561449050903)  # todo why shifted is much worse?
 
     def test_torch_GPU_memory_leaking(self):
         np.random.seed(seed)
@@ -85,12 +93,12 @@ class ApproximatorTest(TestCase):
         approximator = TorchApproximator()
 
         # check GD
-        checkpoint, history1, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=30, n_hiddens=100)
+        checkpoint, history1, best_loss_test, epoch = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=30, n_hiddens=100)
         self.assertEqual(0, gpu_memory_info()['Allocated'])
         self.assertIsNotNone(checkpoint)  # Was a cause of leaking GPU memory because of 'model_state_dict' value.
 
         # check SGD
-        checkpoint, history2, best_loss_test = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=30, n_hiddens=100, batch_size=175000)
+        checkpoint, history2, best_loss_test, epoch = approximator.train(df.iloc[:, df.columns != 'PV'].values, df.PV.values, n_epochs=30, n_hiddens=100, batch_size=175000)
         self.assertEqual(0, gpu_memory_info()['Allocated'])
         self.assertIsNotNone(checkpoint)  # Was a cause of leaking GPU memory because of 'model_state_dict' value.
 
