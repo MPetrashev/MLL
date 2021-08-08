@@ -1,7 +1,7 @@
 import logging
 import sys
 from collections import namedtuple
-from typing import Callable, Dict
+from typing import Callable
 
 import torch
 import numpy as np

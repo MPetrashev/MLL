@@ -20,15 +20,15 @@ def optimizer_to(optimizer, device):
                         subparam._grad.data = subparam._grad.data.to(device)
 
 
-def gpu_memory_info():
+def gpu_memory_info(device: str = None):
     """
     https://stackoverflow.com/questions/58216000/get-total-amount-of-free-gpu-memory-and-available-using-pytorch
     :return:
     """
-    reserved = cuda.memory_reserved(0)
-    allocated = cuda.memory_allocated(0)
+    reserved = cuda.memory_reserved(device)
+    allocated = cuda.memory_allocated(device)
     return {
-        'Total': cuda.get_device_properties(0).total_memory,
+        'Total': cuda.get_device_properties(device).total_memory,
         'Reserved': reserved,
         'Allocated': allocated,
         'Free': reserved - allocated

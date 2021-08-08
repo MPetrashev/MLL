@@ -2,7 +2,7 @@ import logging
 import numpy as np
 logger = logging.getLogger(__file__)
 
-has_gpu = True
+has_gpu = False
 
 if has_gpu:
     import tensorflow as tf
@@ -20,6 +20,7 @@ from dl.TFApproximator import TFApproximator
 # from dl.PlotlyCallback import plotly_callback
 
 
+# todo remove this method
 def shift_pvs(pvs: np.ndarray, expected_min: float = 100.) -> np.ndarray:
     shift = expected_min - pvs.min()
     return pvs + shift
