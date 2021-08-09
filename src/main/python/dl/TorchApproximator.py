@@ -103,7 +103,8 @@ class TorchApproximator:
             data = self.data()
 
             stop = False
-            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_epoch["loss_test"]:.7f}'):
+            for epoch in vrange(n_epochs,
+                                extra_info=lambda msg, idx: f'{msg}.Best loss test: {best_epoch["loss_test"]:.7f}'):
                 for x_batch, y_batch in data.train_batches(batch_size=self.batch_size):
                     loss_train, loss_test, stop = self._run_batch(net, x_batch, y_batch, data)
                     if loss_test < best_epoch['loss_test']:

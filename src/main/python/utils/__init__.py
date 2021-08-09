@@ -100,7 +100,7 @@ def as_ndarray(dataset: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
     return dataset.to_numpy() if isinstance(dataset, (pd.DataFrame,pd.Series)) else dataset
 
 
-def vrange(start, stop=None, step=1, extra_info: Callable[[int], str] = None):
+def vrange(start, stop=None, step=1, extra_info: Callable[[str, int], str] = None):
     """
     Verbose version of range() generator which does output % of completion on each iteration
     :param start:
@@ -115,8 +115,10 @@ def vrange(start, stop=None, step=1, extra_info: Callable[[int], str] = None):
     for idx in range(start, stop, step):
         yield idx
         completed = (idx+1) * 100 / N
-        msg = '' if extra_info is None else '. ' + extra_info(idx)
-        print(f'\r{completed:5.2f}% completed{msg}', end='', flush=True)
+        msg = f'{completed:5.2f}% completed'
+        if extra_info:
+            msg = extra_info(msg, idx)
+        print(f'\r{msg}', end='', flush=True)
 
 
 def venumerate(sequence, start=0):
