@@ -2,7 +2,7 @@ import logging
 import numpy as np
 logger = logging.getLogger(__file__)
 
-has_gpu = False
+has_gpu = True
 
 if has_gpu:
     import tensorflow as tf
@@ -15,6 +15,7 @@ else:
     os.environ["CUDA_VISIBLE_DEVICES"] = '-1' # switch off GPU https://datascience.stackexchange.com/questions/58845/how-to-disable-gpu-with-tensorflow
     logger.info('There is no GPU on your machine')
 
+from dl.TrainingData import TrainingData
 from dl.TorchApproximator import TorchApproximator
 from dl.TFApproximator import TFApproximator
 # from dl.PlotlyCallback import plotly_callback

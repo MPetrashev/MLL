@@ -5,7 +5,7 @@ from torch.nn import functional as F
 
 
 class Net(torch.nn.Module):
-    def __init__(self, n_features: int, n_hiddens: int, n_layers: int, n_outputs: int,
+    def __init__(self, n_features: int, n_layers: int, n_hiddens: int, n_outputs: int,
                  output_layer_bias_shift: int = None, model_state_dict: Dict = None):
         """
         :type n_features:

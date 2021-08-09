@@ -1,147 +1,129 @@
+import copy
 import logging
 import sys
 from collections import namedtuple
-from typing import Callable
+from typing import Callable, Tuple, Dict
 
 import torch
 import numpy as np
 import pandas as pd
 
-from dl.DataLoader import DataLoader
 from dl.Net import Net
+from dl.TrainingData import TrainingData
 from dl.cuda import optimizer_to
 from utils import vrange, less_than_1pc_exceeds_1pc_diff
 
 logger = logging.getLogger(__file__)
 # todo change data.cpu().numpy().item() on item()
-
-
-Checkpoint = namedtuple('Checkpoint', ['n_features', 'n_layers', 'n_hiddens', 'n_outputs', 'model_state_dict']
-                        , defaults=(None, None, None, 1, {}))
-
-
-# Example taken from here: https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/27
-def run_batch(net: Net, x_: torch.Tensor, y_: torch.Tensor, x_test: torch.Tensor, y_test: torch.Tensor,
-              loss_func: Callable, optimizer: torch.optim.Optimizer, device: str = 'cpu',
-              stop_condition: Callable = None):
-    prediction = net(x_)
-    loss = loss_func(prediction, y_)
-
-    loss_test = sys.float_info.max
-    prediction_test = net(x_test.to(device))
-    loss_test_ = loss_func(prediction_test, y_test.to(device)).data.cpu().numpy().item()
-    if loss_test_ < loss_test:
-        loss_test = loss_test_
-
-    optimizer.zero_grad()
-    loss.backward()  # MemoryException can arise here as well
-    optimizer.step()
-    return loss.data.cpu().numpy().item(), loss_test, stop_condition and stop_condition(y_test, prediction_test)
-
-
-# todo move device to object var
-def fit_net(net: Net, n_epochs: int, x: torch.Tensor, y: torch.Tensor, pct_test: float, pct_validation: float,
-            loss_func : Callable, lr=0.01, batch_size: int = None, shuffle=False, device: str='cpu', stop_condition: Callable = None):
-
-    n = y.shape[0]
-    n_train = int(np.round(n * (1 - pct_test - pct_validation))) # todo rename
-    n_test = int(np.round(n * pct_test))
-
-
-    x_train = x[:n_train]
-    x_test = x[n_train:(n_train + n_test)]
-    y_train = y[:n_train]
-    y_test = y[n_train:(n_train + n_test)]
-
-
-    # todo check SGD+Nesterov optimizer About SGD+Nesterov: https://medium.com/@Biboswan98/optim-adam-vs-optim-sgd-lets-dive-in-8dbf1890fbdc
-    # Correct value of momentum is obtained by cross validation and would avoid getting stuck in a local minima.
-    # In fact it is said that SGD+Nesterov can be as good as Adam’s technique.
-    # optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, dampening=dampening, nesterov=nesterov)
-
-    optimizer = torch.optim.Adam(net.parameters(), lr=lr)
-    best_loss_test = y.abs().max().item()
-
-    checkpoint = Checkpoint(net.n_features, net.n_layers, net.n_hiddens, 1)
-    losses = []
-    epoch = -1
-    try:
-        net.to(device)  # todo do we need it?
-
-        def record_step(epoch, loss, loss_test):
-            nonlocal best_loss_test, checkpoint
-            if loss_test < best_loss_test:
-                best_loss_test = loss_test
-                checkpoint = checkpoint._replace(n_layers=net.n_layers, n_hiddens=net.n_hiddens,
-                                                 model_state_dict=net.state_dict())
-            losses.append([epoch + 1, loss_test, loss])
-
-        stop = False
-        for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_loss_test:.7f}'):
-            for x_batch, y_batch in DataLoader(x_train, y_train, batch_size=batch_size):
-                loss, loss_test, stop = run_batch(net, x_batch.to(device), y_batch.to(device), x_test, y_test, loss_func
-                            , optimizer, device=device, stop_condition=stop_condition)
-                record_step(epoch, loss, loss_test)
-                if stop:
-                    break
-            if stop:    # todo not ideal double stop from inner for but there is no better way to do it
-                break
-    finally:
-        optimizer_to(optimizer, torch.device('cpu'))
-        del optimizer
-        net.to('cpu')
-        if checkpoint.model_state_dict:
-            # does fix memory leaking problem: gpu_memory_info()['Allocated'] wouldn't 0
-            checkpoint._replace(model_state_dict={k: v.to('cpu') for k, v in checkpoint.model_state_dict.items()})
-        # wipe_memory()
-
-    return best_loss_test, checkpoint, epoch, pd.DataFrame(losses, columns=['Epoch', 'Loss Test', 'Loss'])
+Training_Info = namedtuple('Epoch_Info', ['loss_test', 'epoch_idx', 'model_state_dict', 'last_epoch'])
 
 
 class TorchApproximator:
 
-    def __init__(self, seed: int = 314, device: str = None, loss_func: Callable = None) -> None:
+    def __init__(self, data: TrainingData, n_layers: int, n_hiddens: int, seed: int = 314, batch_size: int = None,
+                 loss_func: Callable = None, stop_condition: Callable = less_than_1pc_exceeds_1pc_diff,
+                 **kwargs) -> None:
         super().__init__()
-        self.loss_func = loss_func if loss_func else torch.nn.MSELoss()  # Loss/cost function
-        if device is None:
-            if torch.cuda.is_available():
-                device = 'cuda'
-                logger.info(f'GPU detected. Running on {device}')
-            else:
-                device = 'cpu'
-                logger.info('No GPU detected. Running on CPU')
-        self.device = device
-
+        self.device = data.device
+        self._data = data
+        self.n_hiddens = n_hiddens
+        self.n_layers = n_layers
+        self.n_features = data.n_features
         self.seed = seed
+        self.batch_size = batch_size
+        self.loss_func = loss_func if loss_func else torch.nn.MSELoss()  # Loss/cost function
+        self.stop_condition = stop_condition
+        self.__dict__.update(kwargs) # todo do we need it?
 
-    def train(self, states: np.ndarray, pvs: np.ndarray, n_epochs: int =6000, pct_test: float=0.2  # Portion for test set
-              , pct_validation: float = 0.1  # Portion for validation set
-              , n_hiddens: int = 100, n_layers: int = 4, lr: float = 0.01, batch_size: int = None
-              , stop_condition: Callable = less_than_1pc_exceeds_1pc_diff):
+    def train(self, n_epochs: int = 6000) -> Tuple[Training_Info, pd.DataFrame]:
         # todo self.values_t would contain [[pv_0], [pv_1],...] instead if [pv_0, pv_1,...] Simplify it
-        self.samples_t = torch.from_numpy(states).float()  # todo rename samples and values to x and y
-        self.values_t = torch.from_numpy(pvs).float().unsqueeze(dim=1)
-        self.pvs = pvs
         np.random.seed(self.seed)
-        self.generator = torch.manual_seed(self.seed)
+        torch.manual_seed(self.seed)
 
-        self.pct_validation = pct_validation
-        n_features = states.shape[1]
-        net = Net(n_features=n_features, n_hiddens=n_hiddens, n_layers=n_layers, n_outputs=1)  # define the network
-        best_loss_test, checkpoint, epoch, df = fit_net(net, n_epochs, self.samples_t, self.values_t, pct_test
-                    , pct_validation, self.loss_func, lr=lr, device=self.device, batch_size=batch_size
-                    , stop_condition=stop_condition)
-        return checkpoint, df, best_loss_test, epoch  # todo sync order of returned vars with fit_net
+        net = Net(self.n_features, self.n_layers, self.n_hiddens, 1)
+        return self._fit_net(net, n_epochs)
 
-    def load_model(self, checkpoint: Checkpoint):
-        model = Net(**checkpoint._asdict())
+    def data(self) -> TrainingData:
+        """
+        To avoid GPU memory leaking we need to use copy of data or put back all field values to cpu
+        :return:
+        """
+        return copy.copy(self._data)
+
+    def _load_model(self, model_state_dict: Dict) -> torch.nn.Module:
+        model = Net(self.n_features, self.n_layers, self.n_hiddens, 1, model_state_dict=model_state_dict)
         model.eval()
         model.to(self.device)
         return model
 
-    def validation_set(self, model:torch.nn.Module):
-        n = self.values_t.shape[0]
-        ind_validation = int(np.round(n * (1 - self.pct_validation)))
-        samples_validation = self.samples_t[ind_validation:].to(self.device)
-        approximation = model(samples_validation).flatten().data.cpu().numpy()  # approximated PVs
-        return self.pvs[ind_validation:], approximation
+    def loss_validation(self, model_state_dict: Dict) -> float:
+        data = self.data()
+        net = self._load_model(model_state_dict)
+        result, _ = self.calc_loss(net, data.X_validation_tensor, data.Y_validation_tensor)
+        return result.item()
+
+    def calc_loss(self, net: torch.nn.Module, X: torch.Tensor, Y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        prediction = net(X)
+        return self.loss_func(prediction, Y), prediction
+
+    # Example taken from here: https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/27
+    def _run_batch(self, net: torch.nn.Module, x_batch: torch.Tensor, y_batch: torch.Tensor, data: TrainingData,
+                   stop_condition: Callable = None) -> Tuple[float, float, bool]:
+        loss, _ = self.calc_loss(net, x_batch, y_batch)
+        loss_test, prediction_test = self.calc_loss(net, data.X_test_tensor, data.Y_test_tensor)
+
+        self.optimizer.zero_grad()
+        loss.backward()  # MemoryException can arise here as well
+        self.optimizer.step()
+        return loss.item(), loss_test.item(), stop_condition and stop_condition(data.Y_test, prediction_test)
+
+    # todo move device to object var
+    def _fit_net(self, net: Net, n_epochs: int, stop_condition: Callable = None) -> Tuple[Training_Info, pd.DataFrame]:
+        """
+        :param net:
+        :param n_epochs:
+        :param stop_condition:
+        :return: Tuple of: best_epoch_info and loss history pd.DataFrame
+        """
+        # todo check SGD+Nesterov optimizer About SGD+Nesterov: https://medium.com/@Biboswan98/optim-adam-vs-optim-sgd-lets-dive-in-8dbf1890fbdc
+        # Correct value of momentum is obtained by cross validation and would avoid getting stuck in a local minima.
+        # In fact it is said that SGD+Nesterov can be as good as Adam’s technique.
+        # optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, dampening=dampening, nesterov=nesterov)
+
+        best_epoch = {
+            'loss_test': sys.float_info.max,
+            'model_state_dict': None
+        }
+        losses_history = []
+        epoch = -1
+
+        if not hasattr(self, 'optimizer'):
+            self.optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
+        try:
+            net.to(self.device)  # todo do we need it?
+            data = self.data()
+
+            stop = False
+            for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_epoch["loss_test"]:.7f}'):
+                for x_batch, y_batch in data.train_batches(batch_size=self.batch_size):
+                    loss_train, loss_test, stop = self._run_batch(net, x_batch, y_batch, data,
+                                                                  stop_condition=stop_condition)
+                    if loss_test < best_epoch['loss_test']:
+                        best_epoch['loss_test'] = loss_test
+                        best_epoch['epoch_idx'] = epoch
+                        best_epoch['model_state_dict'] = net.state_dict()
+                    losses_history.append([epoch + 1, loss_test, loss_train])
+                    if stop:
+                        break
+                if stop:  # todo not ideal double stop from inner for but there is no better way to do it
+                    break
+        finally:
+            optimizer_to(self.optimizer, torch.device('cpu'))
+            del self.optimizer # todo if we did create it ourself, it's fine. Otherwise? Also, we can't re-train
+            net.to('cpu')
+            best_epoch['last_epoch'] = epoch
+            if best_epoch['model_state_dict']:
+                # does fix memory leaking problem: gpu_memory_info()['Allocated'] wouldn't 0
+                best_epoch['model_state_dict'] = {k: v.to('cpu') for k, v in best_epoch['model_state_dict'].items()}
+            # wipe_memory()
+        return Training_Info(**best_epoch), pd.DataFrame(losses_history, columns=['Epoch', 'Loss Test', 'Loss'])
