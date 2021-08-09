@@ -33,7 +33,7 @@ class TorchApproximator:
         self.batch_size = batch_size
         self.loss_func = loss_func if loss_func else torch.nn.MSELoss()  # Loss/cost function
         self.stop_condition = stop_condition
-        self.__dict__.update(kwargs) # todo do we need it?
+        self.__dict__.update(kwargs)  # todo do we need it?
 
     def train(self, n_epochs: int = 6000) -> Tuple[Training_Info, pd.DataFrame]:
         # todo self.values_t would contain [[pv_0], [pv_1],...] instead if [pv_0, pv_1,...] Simplify it
@@ -67,22 +67,21 @@ class TorchApproximator:
         return self.loss_func(prediction, Y), prediction
 
     # Example taken from here: https://discuss.pytorch.org/t/how-can-we-release-gpu-memory-cache/14530/27
-    def _run_batch(self, net: torch.nn.Module, x_batch: torch.Tensor, y_batch: torch.Tensor, data: TrainingData,
-                   stop_condition: Callable = None) -> Tuple[float, float, bool]:
+    def _run_batch(self, net: torch.nn.Module, x_batch: torch.Tensor, y_batch: torch.Tensor, data: TrainingData) \
+            -> Tuple[float, float, bool]:
         loss, _ = self.calc_loss(net, x_batch, y_batch)
         loss_test, prediction_test = self.calc_loss(net, data.X_test_tensor, data.Y_test_tensor)
 
         self.optimizer.zero_grad()
         loss.backward()  # MemoryException can arise here as well
         self.optimizer.step()
-        return loss.item(), loss_test.item(), stop_condition and stop_condition(data.Y_test, prediction_test)
+        return loss.item(), loss_test.item(), self.stop_condition and self.stop_condition(data.Y_test, prediction_test)
 
     # todo move device to object var
-    def _fit_net(self, net: Net, n_epochs: int, stop_condition: Callable = None) -> Tuple[Training_Info, pd.DataFrame]:
+    def _fit_net(self, net: Net, n_epochs: int) -> Tuple[Training_Info, pd.DataFrame]:
         """
         :param net:
         :param n_epochs:
-        :param stop_condition:
         :return: Tuple of: best_epoch_info and loss history pd.DataFrame
         """
         # todo check SGD+Nesterov optimizer About SGD+Nesterov: https://medium.com/@Biboswan98/optim-adam-vs-optim-sgd-lets-dive-in-8dbf1890fbdc
@@ -106,8 +105,7 @@ class TorchApproximator:
             stop = False
             for epoch in vrange(n_epochs, extra_info=lambda idx: f'Best loss test: {best_epoch["loss_test"]:.7f}'):
                 for x_batch, y_batch in data.train_batches(batch_size=self.batch_size):
-                    loss_train, loss_test, stop = self._run_batch(net, x_batch, y_batch, data,
-                                                                  stop_condition=stop_condition)
+                    loss_train, loss_test, stop = self._run_batch(net, x_batch, y_batch, data)
                     if loss_test < best_epoch['loss_test']:
                         best_epoch['loss_test'] = loss_test
                         best_epoch['epoch_idx'] = epoch
@@ -119,7 +117,7 @@ class TorchApproximator:
                     break
         finally:
             optimizer_to(self.optimizer, torch.device('cpu'))
-            del self.optimizer # todo if we did create it ourself, it's fine. Otherwise? Also, we can't re-train
+            del self.optimizer  # todo if we did create it ourself, it's fine. Otherwise? Also, we can't re-train
             net.to('cpu')
             best_epoch['last_epoch'] = epoch
             if best_epoch['model_state_dict']:
