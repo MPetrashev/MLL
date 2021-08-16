@@ -11,7 +11,6 @@ import pandas as pd
 from dl.Net import Net
 from dl.TrainingData import TrainingData
 from dl.cuda import optimizer_to
-from utils import less_than_1pc_exceeds_1pc_diff
 
 logger = logging.getLogger(__file__)
 # todo change data.cpu().numpy().item() on item()
@@ -21,8 +20,7 @@ Training_Info = namedtuple('Training_Info', ['loss_test', 'epoch_idx', 'last_epo
 class TorchApproximator:
 
     def __init__(self, data: TrainingData, n_layers: int, n_hiddens: int, seed: int = 314, batch_size: int = None,
-                 loss_func: Callable = None, stop_condition: Callable = less_than_1pc_exceeds_1pc_diff,
-                 **kwargs) -> None:
+                 loss_func: Callable = None, stop_condition: Callable = None, **kwargs) -> None:
         super().__init__()
         self.device = data.device
         self._data = data
@@ -66,7 +64,7 @@ class TorchApproximator:
         self.optimizer.zero_grad()
         loss.backward()  # MemoryException can arise here as well
         self.optimizer.step()
-        return loss.item(), loss_test.item(), self.stop_condition and self.stop_condition(data.Y_test, prediction_test)
+        return loss.item(), loss_test.item(), self.stop_condition and self.stop_condition(loss_test, data.Y_test, prediction_test)
 
     # todo move device to object var
     def _fit_net(self, n_epochs: int) -> Tuple[Training_Info, pd.DataFrame]:
@@ -101,6 +99,7 @@ class TorchApproximator:
                         best_epoch['epoch_idx'] = epoch
                     losses_history.append([epoch + 1, loss_test, loss_train])
                     if stop:
+                        logger.info(f'Stop condition achieved at {loss_test} lost_test value')
                         break
                 if stop:  # todo not ideal double stop from inner for but there is no better way to do it
                     break

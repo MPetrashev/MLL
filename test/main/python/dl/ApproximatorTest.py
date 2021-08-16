@@ -63,7 +63,6 @@ class ApproximatorTest(TestCase):
         # Original time to execute: 2m 29s
         np.random.seed(seed)
         torch.manual_seed(seed)
-
         df = self.put_prices_100K
 
         approximator = TorchApproximator(TrainingData(df.iloc[:, df.columns != 'PV'].values, df.PV.values), 4, 100)
@@ -71,8 +70,24 @@ class ApproximatorTest(TestCase):
         self.assert_frame_equal('torch_steps.csv', history, compare_just_head=True)
 
         data = approximator.data('cpu')
-        loss, _ = approximator.calc_loss(data.X_validation_tensor, data.Y_validation_tensor)
+        prediction = approximator.net(data.X_validation_tensor)
+        loss = approximator.loss_func(prediction, data.Y_validation_tensor)
+        # loss, _ = approximator.calc_loss(data.X_validation_tensor, data.Y_validation_tensor)
         self.assertEqual(loss.item(), 0.008219024166464806)
+
+        prediction = prediction.detach().numpy().squeeze()
+        self.assertEqual(np.percentile( data.Y_validation, 99.5), 50.77159710621342)
+        self.assertEqual(np.percentile( prediction, 99.5), 50.80400770187377)
+
+        self.assertEqual(np.percentile( data.Y_validation, 99), 49.45971426539596)
+        self.assertEqual(np.percentile( prediction, 99.), 49.497607498168954)
+
+
+
+    def test_torch_shifted_put_BS_example(self):
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        df = self.put_prices_100K
 
         # Check shifted PVs approximation
         approximator = TorchApproximator(TrainingData(df.iloc[:, df.columns != 'PV'].values, shift_pvs(df.PV.values)), 4, 100)
@@ -81,13 +96,6 @@ class ApproximatorTest(TestCase):
         data = approximator.data('cpu')
         loss, _ = approximator.calc_loss(data.X_validation_tensor, data.Y_validation_tensor)
         self.assertEqual(loss.item(), 0.12789303064346313)  # todo why shifted is much worse?
-
-    def test_torch_scaled_vs_unscaled(self):
-        """
-        Best unscaled: 100K, 2, 400. Test: 0.002541386755, Val: 0.002535967855
-        Best scaled: 100K,
-        :return:
-        """
 
     def test_torch_GPU_memory_leaking(self):
         np.random.seed(seed)

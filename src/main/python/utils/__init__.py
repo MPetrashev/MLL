@@ -136,21 +136,6 @@ def venumerate(sequence, start=0):
         print(f'{completed:2d}% completed', end='\r', flush=True)
 
 
-def less_than_1pc_exceeds_1pc_diff(y, y_prediction):
-    y = y.squeeze()
-    y_prediction = y_prediction.detach().cpu().numpy().squeeze()
-    arr = np.isclose(y, y_prediction, rtol=0.001) # 10bps remove y.squeeze() and reuse original array
-    n = np.count_nonzero(arr)
-    return n / y.shape[0] > 0.99
-
-# def less_than_1pc_exceeds_1pc_diff(y, y_prediction):
-#     y = y.squeeze() + 100.
-#     y_prediction = y_prediction.detach().cpu().numpy().squeeze() + 100.
-#     arr = np.isclose(y, y_prediction, rtol=0.001) # 10bps remove y.squeeze() and reuse original array
-#     n = np.count_nonzero(arr)
-#     return n / y.shape[0] > 0.99
-
-
 def split_on_condition(seq, predicate):
     """
     :param seq:
