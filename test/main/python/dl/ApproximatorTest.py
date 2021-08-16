@@ -70,15 +70,24 @@ class ApproximatorTest(TestCase):
         best_epoch, history = approximator.train(n_epochs=n_epochs)
         self.assert_frame_equal('torch_steps.csv', history, compare_just_head=True)
 
-        loss = approximator.loss_validation(best_epoch.model_state_dict)
-        self.assertEqual(loss, 0.00821902509778738)
+        data = approximator.data('cpu')
+        loss, _ = approximator.calc_loss(data.X_validation_tensor, data.Y_validation_tensor)
+        self.assertEqual(loss.item(), 0.008219024166464806)
 
         # Check shifted PVs approximation
-        approximator = TorchApproximator(TrainingData(df.iloc[:, df.columns != 'PV'].values, shift_pvs(df.PV.values))
-                                         , 4,100)
-        best_epoch, history = approximator.train(n_epochs)
-        loss = approximator.loss_validation(best_epoch.model_state_dict)
-        self.assertEqual(loss, 0.12789295613765717)  # todo why shifted is much worse?
+        approximator = TorchApproximator(TrainingData(df.iloc[:, df.columns != 'PV'].values, shift_pvs(df.PV.values)), 4, 100)
+        approximator.train(n_epochs)
+
+        data = approximator.data('cpu')
+        loss, _ = approximator.calc_loss(data.X_validation_tensor, data.Y_validation_tensor)
+        self.assertEqual(loss.item(), 0.12789303064346313)  # todo why shifted is much worse?
+
+    def test_torch_scaled_vs_unscaled(self):
+        """
+        Best unscaled: 100K, 2, 400. Test: 0.002541386755, Val: 0.002535967855
+        Best scaled: 100K,
+        :return:
+        """
 
     def test_torch_GPU_memory_leaking(self):
         np.random.seed(seed)
@@ -91,14 +100,14 @@ class ApproximatorTest(TestCase):
         approximator = TorchApproximator(TrainingData(df.iloc[:, df.columns != 'PV'].values, df.PV.values), 4, 100)
         best_epoch, history1 = approximator.train(30)
         self.assertEqual(0, gpu_memory_info()['Allocated'])
-        self.assertIsNotNone(best_epoch.model_state_dict)  # Was a cause of leaking GPU memory because of 'model_state_dict' value.
+        self.assertIsNotNone(approximator.net)  # Was a cause of leaking GPU memory because of 'model_state_dict' value.
 
         # check SGD
         approximator = TorchApproximator(TrainingData(df.iloc[:, df.columns != 'PV'].values, df.PV.values), 4, 100
                                          , batch_size=175000)
         best_epoch, history2 = approximator.train(30)
         self.assertEqual(0, gpu_memory_info()['Allocated'])
-        self.assertIsNotNone(best_epoch.model_state_dict)  # Was a cause of leaking GPU memory because of 'model_state_dict' value.
+        self.assertIsNotNone(approximator.net)  # Was a cause of leaking GPU memory because of 'model_state_dict' value.
 
     def test_tf_put_BS_example(self):
         approximator = TFApproximator()

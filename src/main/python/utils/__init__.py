@@ -149,3 +149,25 @@ def less_than_1pc_exceeds_1pc_diff(y, y_prediction):
 #     arr = np.isclose(y, y_prediction, rtol=0.001) # 10bps remove y.squeeze() and reuse original array
 #     n = np.count_nonzero(arr)
 #     return n / y.shape[0] > 0.99
+
+
+def split_on_condition(seq, predicate):
+    """
+    :param seq:
+    :param predicate:
+    :return: Splits list on two lists: 1st list will contain all items where predicate is true, others come 2nd list
+    """
+    a, b = [], []
+    for item in seq:
+        (a if predicate(item) else b).append(item)
+    return a, b
+
+
+def swap_rows(df: pd.DataFrame, row1:int, row2:int):
+    """
+    Swaps row1 and row2 in df
+    :return:
+    """
+    a, b = df.iloc[row1].copy(), df.iloc[row2]
+    df.iloc[row1], df.iloc[row2] = b, a
+    return df
