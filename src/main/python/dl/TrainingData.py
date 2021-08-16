@@ -1,10 +1,10 @@
 import logging
 import math
-from typing import Sequence, Iterable, Tuple
+from typing import Sequence, Iterable, Tuple, Callable
 import numpy as np
 import torch
 
-from utils import lazy_property
+from utils import lazy_property, split_on_condition, swap_rows
 
 logger = logging.getLogger(__file__)
 
@@ -46,6 +46,10 @@ class TrainingData:
         self.device = device  # todo remove this field
 
     def _X_tensor(self, X) -> torch.Tensor:
+        # import torch
+        # # Otherwise default dtype would be torch.float32 which influence a lot MSELoss function value
+        # torch.set_default_dtype(torch.float64)
+        # Also, we need to change torch.from_numpy(...).float() -> torch.from_numpy(...).double()
         return torch.from_numpy(X).float()
 
     def _Y_tensor(self, Y) -> torch.Tensor:
@@ -87,7 +91,7 @@ class TrainingData:
         """
         return self._X_tensor(self.X_validation).to(self.device)
 
-    def train_batches(self, batch_size: int = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def train_batches(self, batch_size: int = None, logging_func: Callable = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         This is a patch generator to torch.utils.data import DataLoader which is VERY slow on 1st iteration.
         todo Returns data sets which are on device already!
@@ -96,9 +100,15 @@ class TrainingData:
         y = self.Y_train_tensor
         if batch_size is None:
             yield x.to(self.device), y.to(self.device)
+            if logging_func:
+                msg = logging_func(1, 1)
+                print(f'\r{msg}', end='', flush=True)
         else:
             n_batches = math.ceil(self.n / batch_size)
             offset = 0
             for batch_ndx in range(n_batches):
                 offset += batch_size
                 yield x[offset:offset + batch_size, :].to(self.device), y[offset:offset + batch_size].to(self.device)
+                if logging_func:
+                    msg = logging_func(batch_ndx, n_batches)
+                    print(f'\r{msg}', end='', flush=True)
