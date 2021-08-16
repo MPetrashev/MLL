@@ -11,11 +11,11 @@ import pandas as pd
 from dl.Net import Net
 from dl.TrainingData import TrainingData
 from dl.cuda import optimizer_to
-from utils import vrange, less_than_1pc_exceeds_1pc_diff
+from utils import less_than_1pc_exceeds_1pc_diff
 
 logger = logging.getLogger(__file__)
 # todo change data.cpu().numpy().item() on item()
-Training_Info = namedtuple('Epoch_Info', ['loss_test', 'epoch_idx', 'model_state_dict', 'last_epoch'])
+Training_Info = namedtuple('Training_Info', ['loss_test', 'epoch_idx', 'model_state_dict', 'last_epoch'])
 
 
 class TorchApproximator:
@@ -56,10 +56,14 @@ class TorchApproximator:
         model.to(self.device)
         return model
 
-    def loss_validation(self, model_state_dict: Dict) -> float:
+    def loss_validation(self, model_state_dict: Dict, loss_func: Callable = None) -> float:
         data = self.data()
         net = self._load_model(model_state_dict)
-        result, _ = self.calc_loss(net, data.X_validation_tensor, data.Y_validation_tensor)
+
+        prediction = net(data.X_validation_tensor)
+        if loss_func is None:
+            loss_func = self.loss_func
+        result = loss_func(prediction, data.Y_validation_tensor)
         return result.item()
 
     def calc_loss(self, net: torch.nn.Module, X: torch.Tensor, Y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -103,9 +107,9 @@ class TorchApproximator:
             data = self.data()
 
             stop = False
-            for epoch in vrange(n_epochs,
-                                extra_info=lambda msg, idx: f'{msg}.Best loss test: {best_epoch["loss_test"]:.7f}'):
-                for x_batch, y_batch in data.train_batches(batch_size=self.batch_size):
+            for epoch in range(n_epochs):
+                for x_batch, y_batch in data.train_batches(self.batch_size, lambda batch_ndx=None,
+                        n_batches=None: f'{(epoch*n_batches+batch_ndx)/(n_epochs*n_batches)*100.:5.2f}% completed. Best loss test: {best_epoch["loss_test"]:.7f}'):
                     loss_train, loss_test, stop = self._run_batch(net, x_batch, y_batch, data)
                     if loss_test < best_epoch['loss_test']:
                         best_epoch['loss_test'] = loss_test
