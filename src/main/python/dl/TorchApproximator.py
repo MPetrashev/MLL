@@ -20,7 +20,7 @@ Training_Info = namedtuple('Training_Info', ['loss_test', 'epoch_idx', 'last_epo
 class TorchApproximator:
 
     def __init__(self, data: TrainingData, n_layers: int, n_hiddens: int, seed: int = 314, batch_size: int = None,
-                 loss_func: Callable = None, stop_condition: Callable = None, **kwargs) -> None:
+                 loss_func: Callable = None, stop_condition: Callable = None, lr: float = 0.01, **kwargs) -> None:
         super().__init__()
         self.device = data.device
         self._data = data
@@ -32,6 +32,7 @@ class TorchApproximator:
         self.loss_func = loss_func if loss_func else torch.nn.MSELoss()  # Loss/cost function
         self.stop_condition = stop_condition
         self.net = Net(self.n_features, self.n_layers, self.n_hiddens, 1)
+        self.lr = lr
         self.__dict__.update(kwargs)  # todo do we need it?
 
     def train(self, n_epochs: int = 6000) -> Tuple[Training_Info, pd.DataFrame]:
@@ -84,7 +85,7 @@ class TorchApproximator:
         epoch = -1
 
         if not hasattr(self, 'optimizer'):
-            self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.01)
+            self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
         try:
             self.net.to(self.device)  # todo do we need it?
             data = self.data()
