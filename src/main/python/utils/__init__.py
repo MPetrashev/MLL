@@ -4,6 +4,7 @@ from typing import List, Union, Callable
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from utils.lazy_property import lazy_property
 from utils.Timer import Timer
 import datetime as dt
@@ -156,3 +157,21 @@ def swap_rows(df: pd.DataFrame, row1:int, row2:int):
     a, b = df.iloc[row1].copy(), df.iloc[row2]
     df.iloc[row1], df.iloc[row2] = b, a
     return df
+
+
+def multi_step_plot(history, true_future, prediction, step, dependent_variable_idx: int):
+    def create_time_steps(length):
+        return list(range(-length, 0))
+
+    plt.figure(figsize=(12, 6))
+    num_in = create_time_steps(len(history))
+    num_out = len(true_future)
+
+    plt.plot(num_in, np.array(history[:, dependent_variable_idx]), label='History')
+    plt.plot(np.arange(num_out) / step, np.array(true_future), 'bo',
+             label='True Future')
+    if prediction.any():
+        plt.plot(np.arange(num_out) / step, np.array(prediction), 'ro',
+                 label='Predicted Future')
+    plt.legend(loc='upper left')
+    plt.show()

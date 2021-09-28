@@ -45,13 +45,14 @@ class TFApproximator:
                             callbacks=callbacks)
         return model, pd.DataFrame.from_dict(history.history)
 
-    def build_model(self, lr, n_hidden, n_layers, pct_test, pct_validation, pvs, states):
+    def build_model(self, lr, n_hidden, n_layers, pct_test, pct_validation, pvs, states) \
+            -> Tuple[tf.keras.Model, tf.data.Dataset, tf.data.Dataset]:
         pvs, states = as_ndarray(pvs), as_ndarray(states)
         n_rows, n_features = states.shape
         splits = [int(round(n_rows*x)) for x in [1.-pct_test-pct_validation, 1.-pct_validation]]
 
-        Y_train, Y_validation, Y_test = np.split(pvs, splits)
-        X_train, X_validation, X_test = np.split(states, splits)
+        Y_train, Y_validation, self.Y_test = np.split(pvs, splits)
+        X_train, X_validation, self.X_test = np.split(states, splits)
 
         n_features = states.shape[1]       # number of columns
         layers = [keras.layers.Dense(n_hidden, input_shape=(n_features,), activation='relu')] \
@@ -63,7 +64,7 @@ class TFApproximator:
 
         # run_eagerly explained here: https://www.tensorflow.org/guide/intro_to_graphs. If it is False, the graph 1st
         # time would be optimized. Otherwise python operations would be called again and again
-        model.compile(run_eagerly=False, optimizer=tf.keras.optimizers.Adam(lr=lr), loss='mse', metrics=['accuracy'])
+        model.compile(run_eagerly=False, optimizer=tf.keras.optimizers.Adam(lr=lr), loss='mse')
         options = tf.data.Options()
         options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
         ds_train = tf.data.Dataset.from_tensors((X_train, Y_train)).with_options(options)

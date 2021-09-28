@@ -4,7 +4,7 @@ from typing import Sequence, Iterable, Tuple, Callable
 import numpy as np
 import torch
 
-from utils import lazy_property, split_on_condition, swap_rows
+from utils import lazy_property
 
 logger = logging.getLogger(__file__)
 

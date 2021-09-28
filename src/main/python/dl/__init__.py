@@ -1,4 +1,6 @@
 import logging
+from collections import namedtuple
+
 logger = logging.getLogger(__file__)
 
 from utils import split_on_condition, swap_rows
@@ -7,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 has_gpu = True
+Training_Info = namedtuple('Training_Info', ['loss_test', 'epoch_idx', 'last_epoch'])
 
 if has_gpu:
     import tensorflow as tf
@@ -44,5 +47,3 @@ def move_extremes_to_train(df: pd.DataFrame, n_train: int) -> pd.DataFrame:
         row1 = next(j for j in range((i + 1) * step, n_train) if j not in inside)
         swap_rows(df, row1, row2)
     return df
-
-

@@ -10,7 +10,7 @@ ipython kernel install --user --name=mll
 ```
 
 ```
-conda create --name mll_gpu python=3.6.6 jupyter quandl matplotlib scikit-learn plotly nbformat
+conda create --name mll_gpu python=3.6.6 jupyter quandl matplotlib scikit-learn plotly nbformat keras
 conda create --name tf_cluster_test python=3.6.6
 activate tf_cluster_test
 pip install tensorflow==2.2.0 numpy==1.19.3

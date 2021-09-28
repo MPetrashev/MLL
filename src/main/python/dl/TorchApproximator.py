@@ -1,26 +1,27 @@
 import copy
 import logging
 import sys
-from collections import namedtuple
-from typing import Callable, Tuple, Dict
+from typing import Callable, Tuple
 
 import torch
 import numpy as np
 import pandas as pd
+from torch.optim import Optimizer
 
+from dl import Training_Info
 from dl.Net import Net
 from dl.TrainingData import TrainingData
 from dl.cuda import optimizer_to
 
 logger = logging.getLogger(__file__)
 # todo change data.cpu().numpy().item() on item()
-Training_Info = namedtuple('Training_Info', ['loss_test', 'epoch_idx', 'last_epoch'])
 
 
 class TorchApproximator:
 
     def __init__(self, data: TrainingData, n_layers: int, n_hiddens: int, seed: int = 314, batch_size: int = None,
-                 loss_func: Callable = None, stop_condition: Callable = None, lr: float = 0.01, **kwargs) -> None:
+                 loss_func: Callable = None, stop_condition: Callable = None, optimizer: Optimizer = None,
+                 **kwargs) -> None:
         super().__init__()
         self.device = data.device
         self._data = data
@@ -32,7 +33,7 @@ class TorchApproximator:
         self.loss_func = loss_func if loss_func else torch.nn.MSELoss()  # Loss/cost function
         self.stop_condition = stop_condition
         self.net = Net(self.n_features, self.n_layers, self.n_hiddens, 1)
-        self.lr = lr
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.01) if optimizer is None else optimizer
         self.__dict__.update(kwargs)  # todo do we need it?
 
     def train(self, n_epochs: int = 6000) -> Tuple[Training_Info, pd.DataFrame]:
@@ -84,8 +85,6 @@ class TorchApproximator:
         losses_history = []
         epoch = -1
 
-        if not hasattr(self, 'optimizer'):
-            self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
         try:
             self.net.to(self.device)  # todo do we need it?
             data = self.data()

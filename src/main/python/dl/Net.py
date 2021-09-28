@@ -38,5 +38,5 @@ class Net(torch.nn.Module):
             # MemoryException cause at lin(x) line or F.relu(x)
             x = lin(x)
             x = F.relu(x)  # Activation function for hidden layer
-        x = self.output_layer(x)  # Apply last layer without activation
+        x = self.output_layer(x)  # Apply last layer without activation BDL: 4.2.1
         return x

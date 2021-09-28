@@ -72,7 +72,6 @@ class ApproximatorTest(TestCase):
         data = approximator.data('cpu')
         prediction = approximator.net(data.X_validation_tensor)
         loss = approximator.loss_func(prediction, data.Y_validation_tensor)
-        # loss, _ = approximator.calc_loss(data.X_validation_tensor, data.Y_validation_tensor)
         self.assertEqual(loss.item(), 0.008219024166464806)
 
         prediction = prediction.detach().numpy().squeeze()
@@ -81,8 +80,6 @@ class ApproximatorTest(TestCase):
 
         self.assertEqual(np.percentile( data.Y_validation, 99), 49.45971426539596)
         self.assertEqual(np.percentile( prediction, 99.), 49.497607498168954)
-
-
 
     def test_torch_shifted_put_BS_example(self):
         np.random.seed(seed)
@@ -118,10 +115,20 @@ class ApproximatorTest(TestCase):
         self.assertIsNotNone(approximator.net)  # Was a cause of leaking GPU memory because of 'model_state_dict' value.
 
     def test_tf_put_BS_example(self):
+        # Original time to execute: 5m 42s
         approximator = TFApproximator()
         df = self.put_prices_100K
-        checkpoint, history = approximator.train(df.iloc[:, df.columns != 'PV'], df.PV, n_epochs=n_epochs, n_hidden=100)
+        model, history = approximator.train(df.iloc[:, df.columns != 'PV'], df.PV, n_epochs=n_epochs, n_hidden=100)
         self.assert_frame_equal('tf_steps.csv', history, compare_just_head=True)
+        loss = model.evaluate(approximator.X_test, approximator.Y_test)
+        self.assertEqual(0.006793989847972989, loss)
+
+        prediction = model.predict(approximator.X_test).squeeze()
+        self.assertEqual(np.percentile(approximator.Y_test, 99.5), 50.77159710621342)
+        self.assertEqual(np.percentile(prediction, 99.5), 50.74609842300409)
+
+        self.assertEqual(np.percentile(approximator.Y_test, 99), 49.45971426539596)
+        self.assertEqual(np.percentile(prediction, 99.), 49.51652423858643)
 
 
 if __name__ == '__main__':
